@@ -23,7 +23,7 @@ DOM 数据集是 20 万条**全成功**轨迹。里面 `slipping + lost` 只占 
 | ❌ **`utils/event_labels.py` 不在公开上游里** | 那是我在自己改造的 `server_fullft` 里新增的文件。原版上游 `utils/` 下只有 `average_meter/datasets/distributed/helpers/instruction_generator/maya_controller/memcached/summary_writer` 八个文件。**生成链路不依赖它**（`gen_recovery.py` 只 import `simulate` 和 `place_recovery_sm`），但**训练侧的标签计算依赖** |
 | ❌ 生成的 h5 不能直接喂给 `managed_train.py` | 它硬编码 `hzxie/DOM` 且有 `audit_dataset` 过滤，自有数据进不去（`docs/04` §8.1） |
 | ⚠️ `patches/apply_grasp_rise_patch.py` 只在**你的 `server_fullft`** 上有意义 | 它改的是 `event_labels.py`，而那个文件不在上游。如果你的 fork 里没有这个文件，`02` 会自动跳过补丁步骤（不会报错） |
-| ⚠️ 单卡只能串行 | 见 §4.2，一半是平台限制、一半是自己的实现约束 |
+| ⚠️ 并发能力取决于显存 | 8 GB 卡只能串行；**4090 24 GB 实测双进程可并行**（§4.2 / `docs/08`） |
 
 **所以这个仓库的定位是**：把「仿真侧怎么造出这类数据」这部分完整开源出来 ——
 脚本、配方、场景设计、标签契约、踩坑全部可复现。**训练侧的对接需要你自己有一份
@@ -63,15 +63,20 @@ DOM 数据集是 20 万条**全成功**轨迹。里面 `slipping + lost` 只占 
 |---|---|
 | GPU | **单环境峰值 5.7 GB 显存**（3 路 480×360 相机 + 物理 + RTX 光栅） |
 | 显存下限 | 8 GB（已在 RTX 5060 8G 上跑通全部 5 类） |
-| 目标卡 | **RTX 4090 24 GB** —— 但**单卡只能串行跑 1 个实例**，多进程会死锁（见 §4.2） |
+| 目标卡 | **RTX 4090 24 GB** —— **双进程并行**（19 GB / 33% util，见 §4.2、`docs/08`）；8 GB 卡需串行 |
 | CPU | 单进程约 1.5 核有效占用；建议 ≥16 核 |
 | 内存 | **单进程 RSS 峰值 ~8.4 GB**（Isaac Sim 启动后基本不回收，每 episode 泄漏 ~200 MB） |
 | 磁盘 | h5 临时占用 **~180 MB/episode**，转 LeRobot 后 **~22 MB/episode**，转换完必须删 h5 |
 | 软件 | Isaac Sim **4.5.0** + Isaac Lab **2.2.1**，Python 3.10，torch 2.7.1+cu128 |
 
-> 🔴 **最重要的一条约束**：`PlaceRecoveryStateMachine` 有 `assert num_envs == 1`，
-> 而**第二个 Isaac Sim 实例会卡死在 Omniverse kit 初始化**（实测，只申请 821 MiB 显存，永不退出）。
-> 所以**单卡不能靠多进程加速**。详见 [`docs/07_concurrency_finding.md`](docs/07_concurrency_finding.md)。
+> 🔴 **最重要的一条约束**：`PlaceRecoveryStateMachine` 有 `assert num_envs == 1`（单实例内不能多环境）。
+> 是否能用多进程，**取决于显卡显存**：
+> - **8 GB 级卡（如 5060）**：第二个实例会卡死在 Omniverse kit 初始化（实测只申请 821 MiB，永不退出）→ **只能串行**
+> - **24 GB 级卡（4090 实测 2026-11-02）**：**双进程可并行**，显存 19 GB / GPU 利用率 33% / 吞吐接近线性
+>   → 直接用 [`scripts/22_supervisor_4090.sh`](scripts/22_supervisor_4090.sh)（三进程必 OOM）
+>
+> 详见 [`docs/07_concurrency_finding.md`](docs/07_concurrency_finding.md) §12 与
+> [`docs/08_4090_parallel.md`](docs/08_4090_parallel.md)。
 
 > ⚠️ **`sm_89`（4090 Ada）与 Blackwell 的 torch 轮子不同**。如果你从 Blackwell 机器复制环境，必须重建，
 > 不能直接拷 conda env。见 [`docs/00_quickstart.md`](docs/00_quickstart.md) §2。
@@ -115,8 +120,9 @@ python scripts/09_verify_loader.py --dataset ~/dvla-gen/a_slip/lerobot_home/loca
 python scripts/10_report.py --base ~/dvla-gen
 ```
 
-> 第 5 步的结论很可能是「**只能开 1 个进程**」。那不是你配错了，是 Omniverse Kit 的全局单例锁。
-> 详见 [`docs/07_concurrency_finding.md`](docs/07_concurrency_finding.md)。
+> 第 5 步在 **8 GB 卡**上的结论很可能是「只能开 1 个进程」——那不是你配错了，是显存不足时
+> Omniverse kit 初始化抢锁失败。**24 GB 的 4090 上双进程是可用的**（2026-11-02 实测）。
+> 详见 [`docs/07_concurrency_finding.md`](docs/07_concurrency_finding.md) §12。
 
 ---
 
@@ -131,7 +137,7 @@ payload/                      ← 注入上游的两个文件，原样拷进 dyn
 profiles/                     ← 5 类配方，参数全显式，不依赖任何默认值
 scripts/                      ← 一键链 00→10
 patches/                      ← grasp_label 段级抬升先决补丁（阻断级，见 §5）
-docs/                         ← 场景设计 / 采集规模 / 单卡实测 / 标签契约 / SOP / 踩坑
+docs/                         ← 场景设计 / 采集规模 / 单卡实测 / 标签契约 / SOP / 踩坑 / 4090 并行
 ```
 
 `scripts/` 全清单：
@@ -149,6 +155,9 @@ docs/                         ← 场景设计 / 采集规模 / 单卡实测 / �
 | `08_qa_gates.sh` | 五道闸门，按类自适应 | 每批 |
 | `09_verify_loader.py` | 独立加载器 14 项验收 | 每批 |
 | `10_report.py` | 交付汇总（8 个勾选项） | 阶段性 |
+| `21_parallel_worker.sh` | **单 worker 封装**（含 LD_LIBRARY_PATH 修复） | 4090 并行生产 |
+| `22_supervisor_4090.sh` | **双 worker 滚动生产**（seed 递增 + 磁盘守卫） | 4090 量产 |
+| `23_pull_4090_to_workstation.sh` | 远端拉取 + 传完即删（防半写） | 磁盘吃紧时 |
 
 ---
 
@@ -170,9 +179,10 @@ docs/                         ← 场景设计 / 采集规模 / 单卡实测 / �
 > 单条耗时随轨迹长度线性变化：108 帧的干净成功 ≈ 10 s 仿真；滑脱恢复轨迹（169–190 帧
 > + settle 等待）≈ 40–50 s。P1.6 的 friction 批次实测平均 **68 s/尝试**（含被丢弃的尝试）。
 
-### 4.2 ⚠️ 单卡不能开多进程（实测否定）
+### 4.2 ⚠️ 8 GB 卡上不能开多进程（实测），但 24 GB 的 4090 可以
 
-我原本按显存算术推算「4090 24 GB 能开 4 个进程，300 条约 3.9 h」。**实测推翻了这个推算。**
+我原本按显存算术推算「4090 24 GB 能开 4 个进程，300 条约 3.9 h」。**在 5060 8 GB 上实测，
+这个推算被推翻了**（下表的实验全部在 5060 8 GB 上做）：
 
 | 实验 | 配置 | 进程 A | 进程 B | 有效吞吐 |
 |---|---|---|---:|---:|
@@ -200,17 +210,29 @@ docs/                         ← 场景设计 / 采集规模 / 单卡实测 / �
 > 完整实验数据、诊断命令、以及「只做资源算术不做启动验证」这条方法论教训，
 > 见 [`docs/07_concurrency_finding.md`](docs/07_concurrency_finding.md)。
 
-### 4.3 4090 的真实收益：单进程略快，不是更多进程
+**🔴 但 4090 24 GB 上双进程是可用的（2026-11-02 实测）**：两个 worker 同时跑，
+显存 8.9 + 10.1 ≈ **19 GB**、GPU 利用率 **33%**（单进程仅 17%）、吞吐 **~28 s/attempt**
+（单进程 37–41 s），接近线性。三进程预计 28 GB+ 必 OOM。
+
+| 卡 | 双进程 | 依据 |
+|---|---|---|
+| 5060 8 GB | ✗ 第二个卡死在 kit 初始化 | 上表实测 |
+| **4090 24 GB** | ✅ **19 GB / 33% util / 产出正常** | 本次实测（`docs/08`） |
+
+> 别把一台机器的死锁结论当成平台定律。换卡、换驱动、换 kit 配置都要重测一次。
+> 一键部署：`scripts/22_supervisor_4090.sh`。
+
+### 4.3 4090 的真实收益：双进程并行 + 单进程略快
 
 | 维度 | 8 GB（5060） | 24 GB（4090） | 对生成的影响 |
 |---|---|---|---|
-| 显存峰值 | 5.66 GB | 同样 5.66 GB | 无差别（单实例） |
-| 光栅吞吐 | 入门 | 完整 AD102 | **单进程估快 1.2–1.5×**（未实测） |
+| 显存峰值（单实例） | 5.66 GB | 9~10 GB（含资产波动） | 无差别 |
+| **并行进程数** | **1（第二实例死锁）** | **2（实测 19 GB）** | **吞吐 ≈ ×2** |
+| 光栅吞吐 | 入门 | 完整 AD102 | 单进程略快 |
 | 显存带宽 | 448 GB/s | 1008 GB/s | 图像回读更快 |
-| 可用分辨率 | 受显存约束 | 可开更高 | **提质量不提速** |
 
-**4090 上机第一件事仍是跑 `scripts/04_benchmark_single_card.sh`**，
-它会明确告诉你「本机能不能开多进程」——大概率是不能。
+**4090 上机第一件事**：跑 `scripts/04_benchmark_single_card.sh` 确认本机能开几个进程，
+再用 `scripts/21_parallel_worker.sh` / `22_supervisor_4090.sh` 起并行生产。
 
 ### 4.4 300 条需要多久（串行修正版）
 

@@ -91,3 +91,5 @@ desktop.ini
 .env.local
 *.local.env
 my_profiles/
+# 本地任务过程目录（质检样例等，不入库）
+过程文件/
