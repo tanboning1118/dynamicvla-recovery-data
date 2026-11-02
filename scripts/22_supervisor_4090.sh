@@ -14,18 +14,24 @@
 #   - 30s episode 预算下 save 率 30~40%，saved 产出 ~75MB/ep (h5 含 3 路 360x480 rgb+seg)
 #
 # 磁盘守卫：剩余 < 8GB 时暂停发起新轮（等待转存/扩容），不杀正在跑的轮。
+#
+# ⚠️ START_ROUND：如果之前已手动跑过若干批次（例如手工启了 seed 2000001 的 50 条），
+#    必须把 START_ROUND 设成对应轮次，否则 supervisor 会从 seed 2000001 重新跑一遍，
+#    造成重复生产。规则：seed = BASE + ROUND*1000，手动批次占用了 ROUND=0，
+#    则 START_ROUND=1（下一个 seed = 2001001）。
 set -uo pipefail
 
 WORK=${WORK:-/root/gpufree-data/work}
 LOG=$WORK/NOTES/supervisor.log
 MARGIN_GB=${MARGIN_GB:-8}
 EP_PER_ROUND=${EP_PER_ROUND:-50}
+START_ROUND=${START_ROUND:-0}
 
 rm -f "$WORK/STOP"
 mkdir -p "$WORK/NOTES"
 
 worker_loop() {
-  local W=$1 BASE=$2 ROUND=0 SEED FREE_GB
+  local W=$1 BASE=$2 ROUND=${START_ROUND:-0} SEED FREE_GB
   # 若已有同名 worker 在跑（如手动启动的），等它退出后再接管
   while pgrep -f "gen_recovery.*prod_$W" > /dev/null; do sleep 60; done
   while [ ! -f "$WORK/STOP" ]; do
