@@ -20,16 +20,44 @@ the simulator.
 
 Four episodes straight out of the pipeline. Three cameras side by side
 (opst / wrist / side), with the frame counter, elapsed time, state-machine
-phase and `|ee−obj|` distance in the top bar. The incident window is boxed,
-and the caption underneath says what the clip is showing. Click a thumbnail
-to play.
+phase and `|ee−obj|` distance in the top bar, and the incident window boxed.
+Click an image or the link below it to play.
 
-| Class | One episode | What happens in the clip |
-| --- | --- | --- |
-| **A**<br>slip → re-grasp | [<img src="assets/demo/recovery_a_slip.jpg" width="300">](assets/demo/recovery_a_slip.mp4) | The gripper stays closed the whole time while contact friction drops to μ=0.02 and the mass is scaled ×8, so the object slides out from between the fingers and lands on the table. The arm sinks back down, re-aims and grasps again, then finishes the placement. 191 frames; the slip is at frame 81. |
-| **B**<br>miss → re-grasp | [<img src="assets/demo/recovery_b_miss.jpg" width="300">](assets/demo/recovery_b_miss.mp4) | The first grasp is offset 5 cm sideways, so the fingers close on air. Ten frames into the lift the object has not risen at all, the empty grasp is caught, and the arm backs off to try again. The object never leaves the table — that is what separates B from A. 167 frames. |
-| **C**<br>missed place → redo | [<img src="assets/demo/recovery_c_place.jpg" width="300">](assets/demo/recovery_c_place.mp4) | The object fails to land in the bowl. Five consecutive frames judge it unplaced, the whole sequence resets and runs again. The clip covers two failure-and-retry rounds. |
-| **D**<br>clean control | [<img src="assets/demo/recovery_d_control.jpg" width="300">](assets/demo/recovery_d_control.mp4) | No injection at all: a plain successful trajectory. Its job is to keep the model from learning "any anomaly means retry". |
+### A · slip, then re-grasp
+
+[![A · slip, then re-grasp](assets/demo/recovery_a_slip.jpg)](assets/demo/recovery_a_slip.mp4)
+
+[Watch the full A episode](assets/demo/recovery_a_slip.mp4) — 191 frames at 25 Hz.
+The gripper stays closed the whole time while contact friction drops to μ=0.02 and
+the mass is scaled ×8, so the object slides out from between the fingers and lands on
+the table. The arm sinks back down, re-aims, grasps again and finishes the placement.
+The slip is at frame 81 — this is the one clip that maps directly onto slipping recall.
+
+### B · closed on air, then re-grasp
+
+[![B · closed on air, then re-grasp](assets/demo/recovery_b_miss.jpg)](assets/demo/recovery_b_miss.mp4)
+
+[Watch the full B episode](assets/demo/recovery_b_miss.mp4) — 167 frames at 25 Hz.
+The first grasp is offset 5 cm sideways, so the fingers close on air. Ten frames into
+the lift the object has not risen at all, the empty grasp is caught, and the arm backs
+off to try again. The object never leaves the table — that is what separates B from A.
+
+### C · missed place, then redo
+
+[![C · missed place, then redo](assets/demo/recovery_c_place.jpg)](assets/demo/recovery_c_place.mp4)
+
+[Watch the full C episode](assets/demo/recovery_c_place.mp4) — 202 frames.
+The object fails to land in the bowl; five consecutive frames judge it unplaced, so the
+whole sequence resets and runs again. This clip is cut from a 549-frame episode and
+covers two failure-and-retry rounds.
+
+### D · clean control
+
+[![D · clean control](assets/demo/recovery_d_control.jpg)](assets/demo/recovery_d_control.mp4)
+
+[Watch the full D episode](assets/demo/recovery_d_control.mp4) — 114 frames.
+No injection at all: a plain successful trajectory. Its job is to keep the model from
+learning "any anomaly means retry".
 
 ### Verification status per class
 

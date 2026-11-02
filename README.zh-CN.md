@@ -14,16 +14,39 @@ DOM 数据集是 20 万条成功轨迹，其中 `slipping + lost` 只占全部�
 
 ## 演示
 
-管线跑出来的四段 episode。三路相机并排（opst / wrist / side），顶栏给帧号、时间、
-状态机阶段和 `|ee−obj|` 距离，异常区间用色框标出，底部一行说明这段在演什么。
-点缩略图播放。
+四段 episode 直接从管线产出，三路相机并排（opst / wrist / side）。顶栏给帧号、时间、
+状态机阶段和 `|ee−obj|` 距离，异常区间用色框标出。点图或下方链接播放。
 
-| 类 | 一段 episode | 画面里发生什么 |
-| --- | --- | --- |
-| **A**<br>滑脱后重抓 | [<img src="assets/demo/recovery_a_slip.jpg" width="300">](assets/demo/recovery_a_slip.mp4) | 夹爪全程保持闭合，接触摩擦降到 μ=0.02、质量 ×8，物体从两指之间滑出去落到台面；机械臂沉下来重新对准，再抓一次，走完放置。191 帧，滑脱在第 81 帧。 |
-| **B**<br>抓空后重试 | [<img src="assets/demo/recovery_b_miss.jpg" width="300">](assets/demo/recovery_b_miss.mp4) | 首抓横向偏 5 cm，夹爪闭合在空气上；抬升 10 帧后物体高度没变，判定空手，退回重新接近。物体从头到尾没离开过桌面——这是与 A 的关键区别。167 帧。 |
-| **C**<br>放偏后重放 | [<img src="assets/demo/recovery_c_place.jpg" width="300">](assets/demo/recovery_c_place.mp4) | 物体没落进碗里，连续 5 帧判定「未放置」，整条流程回 RESET 重来。片段截取了其中两轮失败到重试。 |
-| **D**<br>纯成功对照 | [<img src="assets/demo/recovery_d_control.jpg" width="300">](assets/demo/recovery_d_control.mp4) | 不注入任何扰动，干净的成功轨迹。它的作用是防止模型把「有异常 = 应该重试」学成无条件重试。 |
+### A · 滑脱后重抓
+
+[![A · 滑脱后重抓](assets/demo/recovery_a_slip.jpg)](assets/demo/recovery_a_slip.mp4)
+
+[观看 A 段完整 episode](assets/demo/recovery_a_slip.mp4)，191 帧 / 25 Hz。夹爪全程保持闭合，
+接触摩擦降到 μ=0.02、质量 ×8，物体从两指之间滑出去落到台面；机械臂沉下来重新对准，
+再抓一次，走完放置。滑脱发生在第 81 帧——这是唯一直接对应 slipping recall 的一段。
+
+### B · 抓空后重试
+
+[![B · 抓空后重试](assets/demo/recovery_b_miss.jpg)](assets/demo/recovery_b_miss.mp4)
+
+[观看 B 段完整 episode](assets/demo/recovery_b_miss.mp4)，167 帧 / 25 Hz。首抓横向偏 5 cm，
+夹爪闭合在空气上；抬升 10 帧后物体高度没变，判定空手，退回重新接近。物体从头到尾没离开
+过桌面——这是与 A 的关键区别。
+
+### C · 放偏后重放
+
+[![C · 放偏后重放](assets/demo/recovery_c_place.jpg)](assets/demo/recovery_c_place.mp4)
+
+[观看 C 段完整 episode](assets/demo/recovery_c_place.mp4)，202 帧 / 12 fps。物体没落进碗里，
+连续 5 帧判定「未放置」，整条流程回 RESET 重来。这段截取自一条 549 帧的 episode，
+覆盖两轮失败到重试。
+
+### D · 纯成功对照
+
+[![D · 纯成功对照](assets/demo/recovery_d_control.jpg)](assets/demo/recovery_d_control.mp4)
+
+[观看 D 段完整 episode](assets/demo/recovery_d_control.mp4)，114 帧 / 15 fps。不注入任何扰动，
+干净的成功轨迹。它的作用是防止模型把「有异常 = 应该重试」学成无条件重试。
 
 ### 四类的验证状态
 
