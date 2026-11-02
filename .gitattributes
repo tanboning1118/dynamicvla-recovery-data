@@ -1,0 +1,27 @@
+# 统一换行符 —— 本仓库要在 Linux 上跑，绝不能把 .sh 存成 CRLF
+# 不加这个文件，Windows 上 clone/commit 会把所有 .sh 写成 CRLF，
+# 到了 Linux 就是 `bad interpreter: /usr/bin/env bash^M: no such file or directory`
+* text=auto eol=lf
+
+# 明确指定（防止某些 git 配置覆盖上面的默认）
+*.sh       text eol=lf
+*.py       text eol=lf
+*.env      text eol=lf
+*.md       text eol=lf
+*.yaml     text eol=lf
+*.yml      text eol=lf
+*.json     text eol=lf
+*.txt      text eol=lf
+LICENSE    text eol=lf
+.gitignore text eol=lf
+
+# 二进制，别做任何转换
+*.h5       binary
+*.hdf5     binary
+*.mp4      binary
+*.png      binary
+*.jpg      binary
+*.zip      binary
+*.usd      binary
+*.safetensors binary
+*.pt       binary
