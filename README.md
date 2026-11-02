@@ -35,7 +35,8 @@ The slip is at frame 81 — this is the one clip that maps directly onto slippin
 Friction and mass snap back to the stock values as soon as the object comes to rest on the
 table (`0.9 / 1.0`, mass ×1 — verbatim what upstream `set_object_material()` hardcodes), so the
 whole retry runs on stock physics. Without that restore the ×8 object would simply slip out
-again and the episode would end in `GIVE_UP`; see `docs/01` §3.1.
+again and the episode would end in `GIVE_UP`; see `docs/01` §3.1 for the restore points and
+`scripts/27_calibrate_slip.py` for the payload sweep.
 
 ### B · closed on air, then re-grasp
 
