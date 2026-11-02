@@ -26,12 +26,40 @@ LOG=$WORK/NOTES/supervisor.log
 MARGIN_GB=${MARGIN_GB:-8}
 EP_PER_ROUND=${EP_PER_ROUND:-50}
 START_ROUND=${START_ROUND:-0}
+# 错峰秒数：两个 kit 同时冷启动会双双卡死在 RTX 初始化后（显存只申请 ~1GB、
+# 永不就绪），三组对照实验（同时/错峰/隔离缓存）只有错峰活下来。
+# worker b 立即启动，worker c 延迟 STAGGER 秒。只在总启动时错一次；
+# 之后的滚动轮次里 c 自然落在 b 的稳态期之后，无需再错。
+STAGGER=${STAGGER:-150}
+# 生产时必须按类注入：PROFILE_B/PROFILE_C 指向 profiles/*.env，
+# 走 24_run_class.sh（profile 唯一真源，含 --require_slip / EP 预算等）。
+# 不设置则退回 run_worker.sh（裸 gen_recovery，吃默认 env —— 只适合基准测试，
+# 默认 SLIP_MODE=open 的滑脱对训练不可见，切勿用它生产 A 类）。
+PROFILE_B=${PROFILE_B:-}
+PROFILE_C=${PROFILE_C:-}
+REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 rm -f "$WORK/STOP"
 mkdir -p "$WORK/NOTES"
 
+launch_worker() {
+  # $1=worker名 $2=seed $3=条数；两条路径的参数顺序不同，分开传
+  if [ -n "${4:-}" ]; then
+    bash "$REPO_DIR/scripts/24_run_class.sh" "$4" "$1" "$2" "$3" \
+      >> "$WORK/NOTES/$1.log" 2>&1
+  else
+    "$WORK/run_worker.sh" "$1" "$2" "$3" >> "$WORK/NOTES/$1.log" 2>&1
+  fi
+}
+
 worker_loop() {
-  local W=$1 BASE=$2 ROUND=${START_ROUND:-0} SEED FREE_GB
+  local W=$1 BASE=$2 PROFILE=${3:-} STAGGER_S=${4:-0} ROUND=${START_ROUND:-0} SEED FREE_GB
+  # 错峰等待：必须等先启 worker 的 kit 完成 RTX 初始化后再冷启动，
+  # 否则两个 kit 双双卡死（只在进程出生时错一次）
+  if [ "$STAGGER_S" -gt 0 ]; then
+    echo "$(date '+%F %T') [$W] 错峰 ${STAGGER_S}s 后启动" >> "$LOG"
+    sleep "$STAGGER_S"
+  fi
   # 若已有同名 worker 在跑（如手动启动的），等它退出后再接管
   while pgrep -f "gen_recovery.*prod_$W" > /dev/null; do sleep 60; done
   while [ ! -f "$WORK/STOP" ]; do
@@ -42,7 +70,7 @@ worker_loop() {
     fi
     SEED=$((BASE + ROUND * 1000))
     echo "$(date '+%F %T') [$W] 第 $ROUND 轮 seed=$SEED n=$EP_PER_ROUND 启动" >> "$LOG"
-    "$WORK/run_worker.sh" "prod_$W" "$SEED" "$EP_PER_ROUND" >> "$WORK/NOTES/prod_$W.log" 2>&1
+    launch_worker "prod_$W" "$SEED" "$EP_PER_ROUND" "$PROFILE"
     ROUND=$((ROUND + 1))
     echo "$(date '+%F %T') [$W] 第 $ROUND 轮结束" >> "$LOG"
   done
@@ -50,6 +78,7 @@ worker_loop() {
 }
 
 # seed 段分配: b=2xxxxxx, c=3xxxxxx，每轮 +1000
-worker_loop b 2000001 &
-worker_loop c 3000001 &
+worker_loop b 2000001 "$PROFILE_B" 0 &
+# 错峰：必须等 b 的 kit 完成 RTX 初始化后 c 才能冷启动（见 STAGGER 注释）
+worker_loop c 3000001 "$PROFILE_C" "$STAGGER" &
 wait

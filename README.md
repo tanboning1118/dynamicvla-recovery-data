@@ -254,12 +254,24 @@ python scripts/09_verify_loader.py --dataset ~/dvla-gen/a_slip/lerobot_home/loca
 python scripts/10_report.py --base ~/dvla-gen
 ```
 
-Parallel production on a 24 GB card:
+Parallel production on a 24 GB card. Point each worker at its profile —
+`PROFILE_*` routes through `24_run_class.sh` (profiles are the single source of
+truth; never produce class A through the bare `21_parallel_worker.sh`, whose
+defaults are `SLIP_MODE=open` — invisible to training). The second worker
+starts `STAGGER` seconds later because two kits cold-starting together deadlock
+after RTX init (measured, see docs/08):
 
 ```bash
+PROFILE_B=$PWD/profiles/a_slip.env \
+PROFILE_C=$PWD/profiles/b_miss.env \
+EP_PER_ROUND=50 \
 setsid nohup bash scripts/22_supervisor_4090.sh > /dev/null 2>&1 < /dev/null &
 touch /root/gpufree-data/work/STOP      # graceful stop after the current round
 ```
+
+Before a full run, sweep the two knobs that decide how many attempts are
+wasted (episode budget for class A, slip payload multiplier) — see
+`docs/09_preproduction_checklist.md` and `scripts/27_calibrate_slip.py`.
 
 ## Data contract
 

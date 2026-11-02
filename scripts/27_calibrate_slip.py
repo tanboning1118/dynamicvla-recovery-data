@@ -64,8 +64,25 @@ REPO = os.path.dirname(HERE)
 
 
 # --------------------------------------------------------------------- profile
-def make_profile(base_path, mass_scale, dst_path):
-    """复制 base profile 并把配重替换掉。
+def apply_overrides(text, overrides):
+    """把 KEY=VALUE 覆盖写进 profile 文本。
+
+    有则替换 export 行，无则在文件头插入。这让同一脚本既能扫配重也能扫
+    别的任何单变量（如 GEN_EPISODE_LENGTH 的 A 类 30 s vs 45 s 对照）——
+    B 类的「真抓空 100% 超时」教训就是 EP 预算不足，A 类从没对照过。
+    """
+    for key, value in overrides:
+        pat = re.compile(r"^export\s+%s=.*$" % re.escape(key), re.M)
+        line = "export %s=%s" % (key, value)
+        if pat.search(text):
+            text = pat.sub(line, text)
+        else:
+            text = line + "\n" + text
+    return text
+
+
+def make_profile(base_path, mass_scale, dst_path, overrides=None):
+    """复制 base profile 并替换配重（以及任何 --override 的变量）。
 
     不直接改 profiles/a_slip.env：那是已验证基线的唯一真源（26% 产出率
     就是它跑出来的），标定过程必须零污染。
@@ -79,6 +96,8 @@ def make_profile(base_path, mass_scale, dst_path):
             "%s 里没有 export REC_SLIP_MASS_SCALE= —— 标定无从下手" % base_path
         )
     text = pat.sub("export REC_SLIP_MASS_SCALE=%g" % mass_scale, text)
+    if overrides:
+        text = apply_overrides(text, overrides)
     text = (
         "# 自动生成：27_calibrate_slip.py（不要手改，也不要提交）\n"
         + text
@@ -152,9 +171,20 @@ def main():
     ap.add_argument("--out", default=os.environ.get("OUT_ROOT",
                                                     "/root/gpufree-data/work/out"))
     ap.add_argument("--tag", default="calib_slip", help="输出子目录前缀")
+    ap.add_argument("--override", action="append", default=[],
+                    metavar="KEY=VALUE",
+                    help="额外覆盖的 profile 变量，可重复。例："
+                         "--override GEN_EPISODE_LENGTH=45 做 A 类 EP 对照")
     ap.add_argument("--dry-run", action="store_true",
                     help="只打印将执行的命令，不跑仿真")
     args = ap.parse_args()
+
+    overrides = []
+    for ov in args.override:
+        if "=" not in ov:
+            raise SystemExit("--override 需要 KEY=VALUE 形式，收到 %r" % ov)
+        k, v = ov.split("=", 1)
+        overrides.append((k.strip(), v.strip()))
 
     scales = [float(x) for x in args.scales.split(",") if x.strip()]
     if not scales:
@@ -184,7 +214,7 @@ def main():
             results.append({"mass": m, "dry": True})
             continue
 
-        make_profile(args.profile, m, prof)
+        make_profile(args.profile, m, prof, overrides)
 
         rc = subprocess.call(cmd)
         if rc != 0:
@@ -208,11 +238,13 @@ def main():
         return 0
 
     # ------------------------------------------------------------- 汇总
+    ov_txt = ("，叠加 " + " ".join(k + "=" + v for k, v in overrides)) if overrides else ""
     print("\n" + "=" * 68)
-    print("配重标定汇总（每档 %d 次尝试）" % args.n)
+    print("单变量扫描汇总（每档 %d 次尝试，扫描维度=REC_SLIP_MASS_SCALE%s）"
+          % (args.n, ov_txt))
     print("-" * 68)
     print("%-6s %6s %6s %10s %8s %8s %8s" % (
-        "配重", "保存", "真滑脱", "滑脱率", "放弃", "RESET", "纯度"))
+        "扫描值", "保存", "真滑脱", "滑脱率", "放弃", "RESET", "纯度"))
     print("-" * 68)
     best = None
     for r in results:
@@ -222,7 +254,7 @@ def main():
         print("%-6g %6d %6d %9.0f%% %8d %8d %8s" % (
             r["mass"], r["saved"], r["slip"], 100 * rate,
             r["give_up"], r["reset"], purity))
-        # 甜点：滑脱率够高、放弃最少。同等滑脱率下取更小的配重（动能更低）
+        # 甜点：滑脱率够高、放弃最少。同等滑脱率下取更小的扫描值
         if rate >= 0.6:
             key = (r["give_up"], -rate, r["mass"])
             if best is None or key < best[0]:
@@ -231,14 +263,19 @@ def main():
 
     if best is None:
         print("[结论] 没有任何一档的滑脱率达到 60%。")
-        print("       配重太小 -> 物体被夹住没滑出；需要往大调，或复核")
-        print("       REC_SLIP_FRICTION 是否真的写进了场景（看 run_config.json）。")
+        if overrides:
+            print("       本次叠加了 override，先排查叠加项本身（如 EP 太短、")
+            print("       关键注入被关掉），再复核 REC_SLIP_FRICTION 是否生效")
+            print("       （看 run_config.json 里实际读到的值）。")
+        else:
+            print("       扫描值太小 -> 物体被夹住没滑出；需要往大调，或复核")
+            print("       REC_SLIP_FRICTION 是否真的写进了场景（看 run_config.json）。")
     else:
         r = best[1]
-        print("[结论] 推荐配重 ×%g：滑脱率 %.0f%%，放弃 %d/%d。"
-              % (r["mass"], 100.0 * r["slip"] / max(r["n"], 1),
+        print("[结论] 扫描值 %g%s 最优：滑脱率 %.0f%%，放弃 %d/%d。"
+              % (r["mass"], ov_txt, 100.0 * r["slip"] / max(r["n"], 1),
                  r["give_up"], r["n"]))
-        print("       把 profiles/a_slip.env 的 REC_SLIP_MASS_SCALE 改成 %g，" % r["mass"])
+        print("       按此把 profiles/a_slip.env 的对应参数改掉，")
         print("       再用 25_verify_episode.py --expect A_slip 复验纯度，")
         print("       然后重跑一批 n=50 更新 docs/05 的产出率基线。")
 
