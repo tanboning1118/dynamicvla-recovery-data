@@ -32,6 +32,11 @@ the mass is scaled ×8, so the object slides out from between the fingers and la
 the table. The arm sinks back down, re-aims, grasps again and finishes the placement.
 The slip is at frame 81 — this is the one clip that maps directly onto slipping recall.
 
+Friction and mass snap back to the stock values as soon as the object comes to rest on the
+table (`0.9 / 1.0`, mass ×1 — verbatim what upstream `set_object_material()` hardcodes), so the
+whole retry runs on stock physics. Without that restore the ×8 object would simply slip out
+again and the episode would end in `GIVE_UP`; see `docs/01` §3.1.
+
 ### B · closed on air, then re-grasp
 
 [![B · closed on air, then re-grasp](assets/demo/recovery_b_miss.jpg)](assets/demo/recovery_b_miss.mp4)
@@ -320,7 +325,7 @@ All four profiles assign every parameter with explicit `export`, and write a
 ```
 payload/     generator, recovery state machine, annotator, quality gates
 profiles/    four recipe files, every parameter explicit
-scripts/     00→10 production chain, 20→24 parallel production, 25→26 verification & demo
+scripts/     00→10 production chain, 20→24 parallel production, 25→27 verification, demo & slip calibration
 patches/     grasp-rise prerequisite patch (see docs/05)
 docs/        scenario design, scale, benchmarks, label contract, SOP, traps
 ```
