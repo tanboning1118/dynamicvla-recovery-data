@@ -9,8 +9,7 @@ A data factory for **failure-recovery trajectories**, built on the
 The DOM dataset contains 200,000 successful episodes. In it, `slipping + lost`
 accounts for **1.34%** of all frames — a model trained on DOM almost never sees
 a grasp fail. This repository generates the missing cases: objects that slip
-out of the gripper, grasps that close on air, objects pushed away mid-approach,
-and placements that miss the target. On the A-class profile the accident-label
+out of the gripper, grasps that close on air, and placements that miss the target. On the A-class profile the accident-label
 density reaches **49.35%**, a 37× increase over DOM.
 
 The pipeline runs on a single consumer GPU. No model weights are needed; only
@@ -144,11 +143,10 @@ arbitrarily.
 
 | Class | Scenario | Injection | Target failure | Episodes |
 | --- | --- | --- | --- | ---: |
-| **A** | Slip, then re-grasp | friction μ = 0.02, payload ×8, gripper stays closed | slip after grasp | 120 |
-| **B** | Grasp on air, then retry | 5 cm lateral offset at first grasp, lift check fails, grasp again | no grasp | 75 |
-| **C** | Object pushed away mid-approach | lateral velocity applied to the object while the arm approaches | object moved | 60 |
-| **D** | Placement misses, second attempt | `is_object_placed` false for 5 frames → RESET | bad placement | 30 |
-| **E** | Clean control | none | negative control | 15 |
+| **A** | Slip, then re-grasp | friction μ = 0.02, payload ×8, gripper stays closed | slip after grasp | 150 |
+| **B** | Grasp on air, then retry | 5 cm lateral offset at first grasp, lift check fails, grasp again | no grasp | 100 |
+| **C** | Placement misses, second attempt | `is_object_placed` false for 5 frames → RESET | bad placement | 30 |
+| **D** | Clean control | none | negative control | 20 |
 
 Physics rationale and per-class yields are in
 [`docs/01_scenario_design.md`](docs/01_scenario_design.md).

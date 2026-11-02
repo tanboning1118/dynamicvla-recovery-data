@@ -16,9 +16,11 @@ G5  可复现闸：run_config.json 存在且 REC_* 字段完整
 --------------------------------------------------------------------
 A 滑脱 : G1/G2/G3 全查；要求出现 sm_state 10/11/12
 B 抓空 : G2/G3 N/A（不滑脱）；要求出现 12，且**不应出现** 10/11
-C 推偏 : G2/G3 N/A；要求出现 1（RESET）
-D 放偏 : G2/G3 N/A；要求出现 1（RESET）
-E 对照 : G2/G3 N/A；**不应出现** 1/10/11/12/13
+C 放偏 : G2/G3 N/A；要求出现 1（RESET）
+D 对照 : G2/G3 N/A；**不应出现** 1/10/11/12/13
+
+注意 C 的「出现 1」只是必要条件。实测大量 RESET 来自抓取/搬运失败，
+要确认是放置失败还得看触发前状态，用 scripts/25_verify_episode.py 的归因。
 
 同时输出：22 类阶段分布 + grasp 3 类分布 + 逐条明细，
 这是「注入是否真的在标签层面留下痕迹」的实测。
@@ -65,12 +67,9 @@ EXPECT = {
           "g23": False, "incident_min": 0.20,
           "desc": "抓空后重试"},
     "C": {"require": [S_RESET], "forbid": [],
-          "g23": False, "incident_min": 0.10,
-          "desc": "推偏后重新定位"},
-    "D": {"require": [S_RESET], "forbid": [],
           "g23": False, "incident_min": 0.05,
           "desc": "放偏后二次放置"},
-    "E": {"require": [], "forbid": [S_RESET, S_SLIP, S_SETTLE, S_RECOVER, S_GIVEUP],
+    "D": {"require": [], "forbid": [S_RESET, S_SLIP, S_SETTLE, S_RECOVER, S_GIVEUP],
           "g23": False, "incident_min": 0.0,
           "desc": "纯成功对照"},
 }
@@ -140,26 +139,27 @@ def guess_profile(base, cfg):
         return "A"
     if "miss" in name and "place" not in name:
         return "B"
-    if "disturb" in name:
-        return "C"
-    if "place_miss" in name or "placemiss" in name:
-        return "D"
     if "control" in name:
-        return "E"
+        return "D"
+    if "place_miss" in name or "placemiss" in name:
+        return "C"
     # 从注入参数反推
     if str(cfg.get("REC_SLIP", "")).strip() in ("1", "True", "true"):
         return "A"
     if str(cfg.get("REC_GRASP_CHECK", "")).strip() in ("1", "True", "true"):
         return "B"
-    if str(cfg.get("REC_DISTURB_AT", "-1")).strip() not in ("-1", "", "None"):
-        return "C"
-    return "E"
+    try:
+        if float(cfg.get("REC_PLACE_OFFSET", 0.0) or 0.0) > 0.0:
+            return "C"
+    except (TypeError, ValueError):
+        pass
+    return "D"
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("base", nargs="?", default=os.path.expanduser("~/dvla-gen/rec_p16"))
-    ap.add_argument("--profile", default=None, help="强制指定类别 A/B/C/D/E")
+    ap.add_argument("--profile", default=None, help="强制指定类别 A/B/C/D")
     ap.add_argument("--json", action="store_true", help="只输出 JSON")
     args = ap.parse_args()
 
