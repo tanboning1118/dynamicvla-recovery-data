@@ -1,0 +1,93 @@
+# ---- 生成产物（大文件，绝不入库）----
+*.h5
+*.hdf5
+*.mp4
+*.png
+*.jpg
+!docs/**/*.png
+!docs/**/*.jpg
+
+# 数据根目录（若有人把产出直接建在仓库里）
+dvla-gen/
+dvla-gen-*/
+datasets/
+outputs/
+runs/
+checkpoints/
+*.safetensors
+*.pt
+*.pth
+*.ckpt
+
+# 资产（约 2 GB，走 01_fetch_assets.sh 下载，见 README §5.3）
+objects/
+scenes/
+assets/
+DOM-Test/
+DOM-3D-Objects/
+*.zip
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.venv/
+venv/
+env/
+ENV/
+
+# ---- 补丁产生的备份（每个人本地不同，不共享）----
+*.bak_*
+*.bak
+*.orig
+*.rej
+
+# 缓存
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# ---- 运行期日志与临时文件 ----
+*.log
+logs/
+/tmp/
+tmp/
+*.samples
+benchmark_result.json
+gates.log
+qa_gates.json
+
+# 哨兵文件（tmux 后台任务的完成标记）
+_DONE
+*.pid
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- 本地配置（可能含路径/密钥）----
+.env.local
+*.local.env
+my_profiles/

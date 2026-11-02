@@ -1,0 +1,55 @@
+MIT License
+
+Copyright (c) 2026 dynamicvla-recovery-data contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+================================================================================
+关于上游代码与资产的许可（重要）
+================================================================================
+
+本 MIT 许可**仅覆盖本仓库自有代码**：
+
+  - scripts/          一键链
+  - profiles/         5 类配方
+  - patches/          标签补丁
+  - payload/          注入脚本（复制并修改自上游，见下）
+  - docs/             文档
+
+下列内容**不受**本 MIT 许可覆盖，使用时必须遵守其各自的许可条款：
+
+1. **S-Lab License 1.0** —— 上游 DynamicVLA / DOM 项目（github.com/hzxie/DynamicVLA）
+   的代码与模型权重。该许可**仅允许非商业用途**。商业使用需另行联系上游作者。
+   `scripts/00_setup.sh` 会拉取上游代码；本仓库不分发上游代码本身。
+
+2. **NVIDIA Isaac Sim / Isaac Lab 许可** —— 仿真器与其资产。
+   见 https://www.nvidia.com/en-us/agreements/enterprise-software/
+
+3. **DOM 数据集资产**（DOM-Test.zip / DOM-3D-Objects.zip）——
+   由上游经 https://gateway.infinitescript.com/ 分发，本仓库**不分发**，
+   `scripts/01_fetch_assets.sh` 只做下载与校验。
+
+4. **`payload/simulations/gen_recovery.py` 与
+   `payload/simulations/state_machines/place_recovery_sm.py`** ——
+   这两个文件是基于上游代码的**派生作品**（derivative work），
+   因此**继承上游的 S-Lab License 1.0**，而非本仓库的 MIT。
+   把它们用于商业用途前，必须先取得上游授权。
+
+简言之：**本仓库的"胶水"是 MIT 的，但它所驱动的仿真器、数据集、
+上游模型都是各自许可的**。请按最严格的那一条来约束你的使用场景。
