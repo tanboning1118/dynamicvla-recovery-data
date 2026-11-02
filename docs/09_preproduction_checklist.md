@@ -14,6 +14,12 @@
 ## 1. 开机第一小时：固定检查（顺序执行，缺一不可）
 
 ```bash
+# ⓪ 代码部署（工位机跑，一条命令把 GitHub 稳定版推上 4090）
+./scripts/28_deploy_4090.sh --host root@183.147.142.40 --port 30833
+#    git archive 出包：只含被跟踪文件、LF 换行由 .gitattributes 保证；
+#    先远端备份（_backup/deploy_*.tgz）再原子替换，py_compile + bash -n 自检。
+#    推完 touch STOP 等旧轮退出，重启 supervisor 才生效。
+
 # ① 磁盘：数据盘剩多少决定今天跑多少（守卫线 8GB 会自动暂停新轮）
 df -h /root/gpufree-data
 # 每 saved episode 75~150MB，双 worker 约 6GB/h —— 剩 <50GB 就要同时挂转存

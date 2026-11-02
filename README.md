@@ -272,6 +272,9 @@ touch /root/gpufree-data/work/STOP      # graceful stop after the current round
 Before a full run, sweep the two knobs that decide how many attempts are
 wasted (episode budget for class A, slip payload multiplier) — see
 `docs/09_preproduction_checklist.md` and `scripts/27_calibrate_slip.py`.
+To push the reviewed version onto the production box from a workstation:
+`./scripts/28_deploy_4090.sh --host root@HOST --port N` (git-archive based,
+backs up the remote tree first, refuses to run unless local HEAD == origin).
 
 ## Data contract
 
@@ -338,7 +341,7 @@ All four profiles assign every parameter with explicit `export`, and write a
 ```
 payload/     generator, recovery state machine, annotator, quality gates
 profiles/    four recipe files, every parameter explicit
-scripts/     00→10 production chain, 20→24 parallel production, 25→27 verification, demo & slip calibration
+scripts/     00→10 production chain, 20→24 parallel production, 25→28 verification, demo, calibration & deploy
 patches/     grasp-rise prerequisite patch (see docs/05)
 docs/        scenario design, scale, benchmarks, label contract, SOP, traps
 ```
