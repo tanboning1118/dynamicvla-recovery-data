@@ -35,18 +35,55 @@ to play.
 
 Yield tells you how many episodes were kept. It does not tell you whether the
 recovery path was actually exercised — the two diverge, so calibration has to
-look at state codes.
+look at state codes. The table below comes from checking `sm_state` episode by
+episode on a 4090, 2026-11-02.
 
-| Class | Mechanism | Status |
+| Class | Mechanism | Status | Effective rate |
+| --- | --- | --- | --- |
+| A slip | friction 0.02 + mass ×8, object slides out of the fingers | ✅ stable; `--require_slip` enforces it, 5/5 contain 10/11/12 | yield ~20%, **class purity 100%** |
+| B miss | 5 cm first-grasp offset + lift check | ✅ stable but **must be filtered**: `--keep_imperfect` saves clean trajectories too | yield ~31%, genuine misses only **3/8 (37.5%)** |
+| C push | lateral impulse + `REC_DRIFT_TOL` stale-plan gate | ❌ **not working**. 20+ attempts; every RESET came from grasp/transport failure, none from the drift gate | 0 |
+| D missed place | `is_object_placed` false → RESET | 🟡 **usable in degraded mode**. The 6 cm `REC_PLACE_OFFSET` is not aggressive enough; real samples come from natural misses | ~1/8, by filtering |
+| E control | no injection | ✅ stable; `sm` contains none of 1/10/11/12/13 | ~35–40% |
+
+Bottom line: **A / B / E produce reliably; D only by filtering natural misses; C does not work yet.**
+
+⚠️ Three ways this pipeline silently produces worthless data. Yield reveals none
+of them — only reading `sm_state` does:
+
+| Class | What it looks like | What was actually true |
 | --- | --- | --- |
-| A slip | friction 0.02 + mass ×8, object slides out of the fingers | ✅ verified: `sm` contains 10/11/12 |
-| B miss | 5 cm first-grasp offset + lift check | ✅ verified: `sm` contains 12 (episode budget must be 45 s; at 30 s every genuine miss times out) |
-| C push | lateral impulse + `REC_DRIFT_TOL` stale-plan gate | ⚠️ injection and gate are in; re-localisation samples are not yet produced reliably — see the correction note in `docs/01` |
-| D missed place | `is_object_placed` false → RESET | ⚠️ the clip above happened **naturally**; the `REC_PLACE_OFFSET` injection is still being validated |
-| E control | no injection | ✅ verified: `sm` contains none of 1/10/11/12/13 |
+| B | 8 episodes saved | only 3 are genuine misses; 4 are clean runs, 1 is a missed place |
+| C | 5 episodes contain RESET | every RESET came from grasp/transport failure, not from re-localising after a push |
+| D | 5 episodes contain RESET | the injected 6 cm offset never made the placement fail; RESET came from grasp failure |
+
+So run verification before conversion — next section.
+
+### Verification (mandatory before conversion)
+
+```bash
+python scripts/25_verify_episode.py out/prod_a2 --expect A_slip --prune
+python scripts/25_verify_episode.py out/prod_b2 --expect B_miss --prune
+```
+
+It checks three things and moves any failing episode to `<batch>/_rejected/`:
+
+1. **Integrity** — every dataset's leading dim equals the frame count, no NaN,
+   and the json annotations agree with `sm_state`.
+2. **Camera liveness** — judged by first-vs-last frame difference. When frozen,
+   the renderer reads a USD stage that physics never writes back to, so the first
+   and last frames are pixel-identical; healthy trajectories stay above 80% even
+   with plenty of idle frames. (An earlier version used the per-frame median and
+   misjudged normal 5% trajectories as frozen.)
+3. **Class** — inferred from `sm_state`, `--expect` mismatch gets pruned. For C/D
+   it also inspects the state *before* each RESET: `≥8` means a missed place,
+   `≤3` means a stale plan, anything in between is a grasp failure and belongs to
+   no class at all.
+
+Exit code 0/1, so it doubles as a production gate.
 
 All four clips are rendered straight from the raw h5 by
-`过程文件/质检episode/make_demo_clip.py`. The frame counter and state codes come
+`scripts/26_make_demo_clip.py`. The frame counter and state codes come
 from `sm_state`; nothing in the overlay is hand-annotated.
 
 ## Why recovery data matters
@@ -250,7 +287,7 @@ All five profiles assign every parameter with explicit `export`, and write a
 ```
 payload/     generator, recovery state machine, annotator, quality gates
 profiles/    five recipe files, every parameter explicit
-scripts/     00→10 production chain, 21→23 parallel production
+scripts/     00→10 production chain, 20→24 parallel production, 25→26 verification & demo
 patches/     grasp-rise prerequisite patch (see docs/05)
 docs/        scenario design, scale, benchmarks, label contract, SOP, traps
 ```
