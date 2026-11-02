@@ -50,7 +50,7 @@ EXP_GRASP = {0, 1, 2}       # HELD / SLIPPING / LOST
 CAMS = ("opst_cam", "side_cam", "wrist_cam")
 
 # 每类的期望：事故类标签（slipping+lost）非零
-ACCIDENT_PROFILES = {"a_slip", "b_miss", "c_disturb", "d_place_miss"}
+ACCIDENT_PROFILES = {"a_slip", "b_miss", "c_place_miss"}
 
 
 class Item:

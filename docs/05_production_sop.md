@@ -83,19 +83,19 @@ bash scripts/04_benchmark_single_card.sh --root ~/dynamicvla-demo --rounds 5
 
 ---
 
-## 阶段 3 · 五类小批校准（约 1.5 h）
+## 阶段 3 · 四类小批校准（约 1.5 h）
 
 **每类各跑 8–20 次尝试，只生成不转换**，目的是拿到 C/D 的真实产出率，并确认
 **恢复路径真的被走过了**（不是「保存成功」就算数）。
 
 ```bash
-for p in a_slip b_miss c_disturb d_place_miss e_control; do
+for p in a_slip b_miss c_place_miss d_control; do
     bash scripts/24_run_class.sh profiles/$p.env calib_$p 7000001 20
     bash scripts/08_qa_gates.sh ~/dvla-gen/calib_$p
 done
 ```
 
-> 用 `24_run_class.sh` 而不是手拼命令行：五类的差异不只是「开哪个注入」，
+> 用 `24_run_class.sh` 而不是手拼命令行：四类的差异不只是「开哪个注入」，
 > 还有 episode 预算和 `--require_slip` / `--keep_imperfect` 的取舍。漏一项就会
 > 静默产废数据，且从保存率上看不出来（见下表 B 行）。
 
@@ -150,7 +150,7 @@ C/E 类 `G2/G3` 会是 `N/A`（没有滑脱，无从判定）——**这是正�
 # 并发度用阶段 2 的实测值；条数用阶段 3 校准后的产出率反推
 BN=4 CHUNK=20 bash scripts/06_run_campaign.py \
     --root ~/dynamicvla-demo \
-    --profiles a_slip:352 b_miss:117 c_disturb:165 d_place_miss:83 e_control:49 \
+    --profiles a_slip:420 b_miss:150 c_place_miss:60 d_control:40 \
     --seed-base 9000 \
     --out-root ~/dvla-gen
 ```
@@ -245,7 +245,7 @@ python scripts/10_report.py --base ~/dvla-gen --holdout ~/dvla-gen-holdout
 | 0 环境 | 2–3 h |
 | 1 单条跑通 | 5 min |
 | 2 产能实测 | 30 min |
-| 3 五类校准（100 尝试） | 1.5 h |
+| 3 四类校准（80 尝试） | 1.5 h |
 | 4 正式量产（766 尝试） | 3.5–4 h |
 | 5 转换 + 验收 | 40 min |
 | 6 holdout | 20 min |

@@ -232,7 +232,7 @@ N=4 时 `linearity ≥ 2.8` 才算可用，否则降并发。
 ## 8. 小批试产（每类 2 条）
 
 ```bash
-for p in a_slip b_miss c_disturb d_place_miss e_control; do
+for p in a_slip b_miss c_place_miss d_control; do
     bash scripts/05_generate.sh --profile profiles/$p.env --n 4 --seed 9000
 done
 ```
@@ -270,7 +270,7 @@ python scripts/09_verify_loader.py --dataset ~/dvla-gen/a_slip/lerobot_home/loca
 ```bash
 # 按 README §4 推算的并发度（上机实测后定）
 BN=4 CHUNK=20 bash scripts/06_run_campaign.py \
-    --profiles a_slip:352 b_miss:117 c_disturb:165 d_place_miss:83 e_control:49 \
+    --profiles a_slip:420 b_miss:150 c_place_miss:60 d_control:40 \
     --seed-base 9000
 ```
 

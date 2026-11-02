@@ -28,8 +28,8 @@ to play.
 | --- | --- | --- |
 | **A**<br>slip → re-grasp | [<img src="assets/demo/recovery_a_slip.jpg" width="300">](assets/demo/recovery_a_slip.mp4) | The gripper stays closed the whole time while contact friction drops to μ=0.02 and the mass is scaled ×8, so the object slides out from between the fingers and lands on the table. The arm sinks back down, re-aims and grasps again, then finishes the placement. 191 frames; the slip is at frame 81. |
 | **B**<br>miss → re-grasp | [<img src="assets/demo/recovery_b_miss.jpg" width="300">](assets/demo/recovery_b_miss.mp4) | The first grasp is offset 5 cm sideways, so the fingers close on air. Ten frames into the lift the object has not risen at all, the empty grasp is caught, and the arm backs off to try again. The object never leaves the table — that is what separates B from A. 167 frames. |
-| **D**<br>missed place → redo | [<img src="assets/demo/recovery_d_place.jpg" width="300">](assets/demo/recovery_d_place.mp4) | The object fails to land in the bowl. Five consecutive frames judge it unplaced, the whole sequence resets and runs again. The clip covers two failure-and-retry rounds. |
-| **E**<br>clean control | [<img src="assets/demo/recovery_e_control.jpg" width="300">](assets/demo/recovery_e_control.mp4) | No injection at all: a plain successful trajectory. Its job is to keep the model from learning "any anomaly means retry". |
+| **C**<br>missed place → redo | [<img src="assets/demo/recovery_c_place.jpg" width="300">](assets/demo/recovery_c_place.mp4) | The object fails to land in the bowl. Five consecutive frames judge it unplaced, the whole sequence resets and runs again. The clip covers two failure-and-retry rounds. |
+| **D**<br>clean control | [<img src="assets/demo/recovery_d_control.jpg" width="300">](assets/demo/recovery_d_control.mp4) | No injection at all: a plain successful trajectory. Its job is to keep the model from learning "any anomaly means retry". |
 
 ### Verification status per class
 
@@ -40,13 +40,20 @@ episode on a 4090, 2026-11-02.
 
 | Class | Mechanism | Status | Effective rate |
 | --- | --- | --- | --- |
-| A slip | friction 0.02 + mass ×8, object slides out of the fingers | ✅ stable; `--require_slip` enforces it, 5/5 contain 10/11/12 | yield ~20%, **class purity 100%** |
-| B miss | 5 cm first-grasp offset + lift check | ✅ stable but **must be filtered**: `--keep_imperfect` saves clean trajectories too | yield ~31%, genuine misses only **3/8 (37.5%)** |
-| C push | lateral impulse + `REC_DRIFT_TOL` stale-plan gate | ❌ **not working**. 20+ attempts; every RESET came from grasp/transport failure, none from the drift gate | 0 |
-| D missed place | `is_object_placed` false → RESET | 🟡 **usable in degraded mode**. The 6 cm `REC_PLACE_OFFSET` is not aggressive enough; real samples come from natural misses | ~1/8, by filtering |
-| E control | no injection | ✅ stable; `sm` contains none of 1/10/11/12/13 | ~35–40% |
+| A slip | friction 0.02 + mass ×8, object slides out of the fingers | ✅ stable; `--require_slip` enforces it, every episode contains 10/11/12 | yield ~26%, **class purity 100%** |
+| B miss | 5 cm first-grasp offset + lift check | ✅ stable but **must be filtered**: `--keep_imperfect` saves clean trajectories too | keep rate ~46%, genuine misses only **3/8 (37.5%)** |
+| C missed place | `is_object_placed` false → RESET | 🟡 **usable in degraded mode**. The 6 cm `REC_PLACE_OFFSET` is not aggressive enough; real samples come from natural misses | ~1/8, by filtering |
+| D control | no injection | ✅ stable; `sm` contains none of 1/10/11/12/13 | ~35–40% |
 
-Bottom line: **A / B / E produce reliably; D only by filtering natural misses; C does not work yet.**
+Bottom line: **A / B / D produce reliably, with A > B as the production priority; C only by filtering natural misses.**
+
+> There used to be a fifth class — object shoved mid-approach, forcing a
+> re-localisation. It is gone, and not because of tuning: the state machine
+> recomputes the grasp target from the object's **live** pose every frame, so once
+> the object is pushed away the arm simply follows it. There is no "stale plan"
+> state to detect. 20+ attempts produced zero valid samples. If the goal is to
+> supervise contact-point extrapolation on a moving object, give the object an
+> initial linear velocity instead of building a recovery path around it.
 
 ⚠️ Three ways this pipeline silently produces worthless data. Yield reveals none
 of them — only reading `sm_state` does:
@@ -54,8 +61,8 @@ of them — only reading `sm_state` does:
 | Class | What it looks like | What was actually true |
 | --- | --- | --- |
 | B | 8 episodes saved | only 3 are genuine misses; 4 are clean runs, 1 is a missed place |
-| C | 5 episodes contain RESET | every RESET came from grasp/transport failure, not from re-localising after a push |
-| D | 5 episodes contain RESET | the injected 6 cm offset never made the placement fail; RESET came from grasp failure |
+| C | 5 episodes contain RESET | the injected 6 cm offset never made the placement fail; RESET came from grasp failure |
+| retired push class | 5 episodes contain RESET | every RESET came from grasp/transport failure, none from re-localising after a push |
 
 So run verification before conversion — next section.
 
@@ -104,7 +111,7 @@ tasks amplify the problem: 88% of them require two grasps, and the first grasp
 is often off by 24.6 cm, so recovery behaviour is on the critical path rather
 than an edge case.
 
-The five profiles here are derived from those failure shares, not chosen
+The four profiles here are derived from the metric they are meant to fix, not chosen
 arbitrarily.
 
 | Class | Scenario | Injection | Target failure | Episodes |
@@ -122,7 +129,7 @@ Physics rationale and per-class yields are in
 
 What this repository actually does, verified on the pinned stack:
 
-- Generates h5 and LeRobot v2.1 episodes for the five classes above, on the
+- Generates h5 and LeRobot v2.1 episodes for the four classes above, on the
   public upstream `hzxie/DynamicVLA` at commit `a27a06d`.
 - Produces the same h5 layout as DOM, so the official converter
   (`scripts/create_lerobot_dataset.py`) accepts it without modification.
@@ -160,7 +167,7 @@ assumes you have your own fork.
 
 ## Measured throughput
 
-Generation needs no model weights. A single 8 GB card is enough to run all five
+Generation needs no model weights. A single 8 GB card is enough to run all four
 classes serially.
 
 | Setup | GPU memory | Utilisation | Throughput |
@@ -278,7 +285,7 @@ Three defaults will silently ruin a batch if left alone.
 | `--require_slip` and `--keep_imperfect` are mutually exclusive, not additive | class B produces zero episodes because it has no slip | use `--keep_imperfect` for B/C/D/E |
 | `REC_SLIP=1` with `MISS_OFFSET>0` puts two anomalies in one trajectory | episodes run to ~1000 frames, 0/9 finish within 30 s | `REC_SLIP=0` for class B, one variable at a time |
 
-All five profiles assign every parameter with explicit `export`, and write a
+All four profiles assign every parameter with explicit `export`, and write a
 `run_config.json` snapshot for the gates. The full list is in
 [`docs/06_troubleshooting.md`](docs/06_troubleshooting.md).
 
@@ -286,7 +293,7 @@ All five profiles assign every parameter with explicit `export`, and write a
 
 ```
 payload/     generator, recovery state machine, annotator, quality gates
-profiles/    five recipe files, every parameter explicit
+profiles/    four recipe files, every parameter explicit
 scripts/     00→10 production chain, 20→24 parallel production, 25→26 verification & demo
 patches/     grasp-rise prerequisite patch (see docs/05)
 docs/        scenario design, scale, benchmarks, label contract, SOP, traps

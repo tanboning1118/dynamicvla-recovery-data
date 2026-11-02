@@ -72,7 +72,7 @@
 | D 放偏 | **40%** | `is_object_placed` 判定 5 帧容错，可能永远判「已放置」→ 不触发重试 | `--dry-run --n 20` |
 
 > **P2 阶段的第一件事就是校准 C/D 的产出率。** 用
-> `bash scripts/05_generate.sh --profile profiles/c_disturb.env --n 20 --dry-run`
+> `bash scripts/05_generate.sh --profile profiles/c_place_miss.env --n 20 --dry-run`
 > 只跑不转，看 `_DONE` 里的 `saved / attempts`。
 
 ### 3.3 完整推算表
@@ -161,7 +161,7 @@
 |---|---:|---:|---:|
 | 环境搭建 + 资产下载 + preflight | 2–3 h | 2–3 h | 3 h |
 | P2.0 产能实测 | 0.5 h | 0.5 h | 3.5 h |
-| P2.1 五类校准（100 尝试） | 2 h | 1.6 h | 5.1 h |
+| P2.1 四类校准（80 尝试） | 2 h | 1.6 h | 5.1 h |
 | P2.2 A+B 主批（469 尝试） | 7.7 h | 5.9 h | 11 h |
 | P2.3 C+D 主批（248 尝试） | 4.0 h | 3.1 h | 14.1 h |
 | P2.4 E + holdout | 0.8 h | 0.6 h | 14.7 h |

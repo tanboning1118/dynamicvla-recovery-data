@@ -50,22 +50,6 @@ S_SETTLE = 11
 S_RECOVER = 12
 S_GIVE_UP = 13
 
-# 五类恢复各自的语义签名。判类按「证据强度」从强到弱匹配，先匹配先返回。
-# 顺序很重要：D 的 RESET 来自 S_TO_TARGET 之后，B 的来自抓取前，两者不会混淆。
-SIGNATURES = [
-    # (类别, 必需状态, 禁止状态, 判据函数)
-    ("A_slip", {S_SLIP_DETECT, S_RECOVER}, set(),
-     "滑脱检测(10) + 重抓(12) 都出现"),
-    ("B_miss", {S_RECOVER}, {S_SLIP_DETECT},
-     "重抓(12) 出现但无滑脱(10) → 抓空后重试"),
-    ("C_disturb", {S_RESET}, {S_SLIP_DETECT},
-     "RESET 且无滑脱 → 需人工复核是否漂移引起"),
-    ("D_place", {S_RESET}, {S_SLIP_DETECT},
-     "RESET 且无滑脱 → 需人工复核是否放置失败引起"),
-    ("E_control", set(), {S_RESET, S_SLIP_DETECT, S_RECOVER},
-     "无任何恢复事件 → 干净对照"),
-]
-
 # 相机冻屏判定。冻屏时渲染器读的 USD 停在初始位姿，首末帧几乎逐像素相同；
 # 正常轨迹即使有大量静止等待帧，首末帧差异也在 80% 以上（实测 82–95%）。
 # 所以首末差异是主判据，逐帧中位数只能辅助——大量 waiting 帧会把它压到 5% 左右。
@@ -75,16 +59,28 @@ PIXEL_DELTA = 10  # uint8 灰度差阈值
 
 
 def classify(sm):
-    """按状态集判类。返回 (类别, 依据)。C/D 无法自动区分，交由 reset_origin 细判。"""
+    """判类。返回 (类别, 依据)。
+
+    四类：A 滑脱 / B 抓空 / C 放偏 / D 干净对照。
+
+    C 不能只看「含状态 1」。实测绝大多数 RESET 来自抓取失败（夹爪没夹住、空手
+    抬升、搬运掉件），那是真失败，但不是「放偏后重放」。必须用 RESET 的触发前
+    状态区分，否则会把整批抓取失败当成 C 类收下。
+    """
     st = set(int(s) for s in sm)
     if S_SLIP_DETECT in st and S_RECOVER in st:
         return "A_slip", "slip(10)+recover(12)"
     if S_RECOVER in st and S_SLIP_DETECT not in st:
         return "B_miss", "recover(12) without slip(10)"
-    if S_RESET in st and S_SLIP_DETECT not in st:
-        return "C_or_D", "reset(1) without slip"
-    if st.isdisjoint({S_RESET, S_SLIP_DETECT, S_RECOVER}):
-        return "E_control", "no recovery event"
+    if S_SLIP_DETECT in st:
+        return "unknown", "slip(10) without recover(12)"
+    if st & {S_RESET, S_GIVE_UP}:
+        whys = sorted({o[2] for o in reset_origin(sm)}) or ["give_up(13)"]
+        if "place_failed" in whys:
+            return "C_place", "reset from place stage"
+        return "X_reset", "reset/abort from " + "/".join(whys)
+    if st.isdisjoint({S_RESET, S_SLIP_DETECT, S_RECOVER, S_GIVE_UP}):
+        return "D_control", "no recovery event"
     return "unknown", "unexpected state set"
 
 
@@ -219,7 +215,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("dirs", nargs="+", help="产出目录")
     ap.add_argument("--expect", default=None,
-                    help="期望类别（A_slip/B_miss/C_disturb/D_place/E_control），不符即判失败")
+                    help="期望类别（A_slip/B_miss/C_place/D_control），不符即判失败")
     ap.add_argument("--prune", action="store_true",
                     help="把失败或类别不符的 episode 移到 <dir>/_rejected/（不删除，可审计）")
     ap.add_argument("--no-cam", action="store_true", help="跳过相机检查（大数据集提速）")
@@ -236,13 +232,8 @@ def main():
             r = check_one(p, cam_check=not args.no_cam)
             r["batch"] = os.path.basename(os.path.abspath(d))
             r["dir"] = d
-            # 类别是否达标（C/D 在状态集层面无法区分，接受 C_or_D）
-            if args.expect:
-                ok_cls = r.get("class") == args.expect or (
-                    args.expect in ("C_disturb", "D_place") and r.get("class") == "C_or_D")
-                r["class_ok"] = ok_cls
-            else:
-                r["class_ok"] = True
+            # 类别是否达标。四类互斥，不做兜底——兜底会让 C 类整批误判通过。
+            r["class_ok"] = (r.get("class") == args.expect) if args.expect else True
             rows.append(r)
             if r["errors"] or not r["class_ok"]:
                 n_fail += 1
@@ -286,22 +277,13 @@ def main():
         print("[%s] --expect %s：%d/%d 符合" % (
             "PASS" if n_fail == 0 else "FAIL", args.expect, good, len(rows)))
 
-    # C/D 细分：只有 RESET 的触发前状态能区分。含状态 1 不等于走通了恢复路径。
-    cd = [r for r in rows if r.get("class") == "C_or_D"]
-    if cd:
-        print("\nRESET 成因细分（含状态 1 不等于 C/D 成立，看这里）：")
-        for r in cd:
-            origins = [o[2] for o in r["resets"]]
-            if "plan_stale(disturb)" in origins:
-                tag = "C(disturb)"
-            elif "place_failed" in origins:
-                tag = "D(place)"
-            elif any(o.startswith("grasp") or o == "dropped_in_transit" for o in origins):
-                tag = "无效(抓取/搬运失败)"
-            else:
-                tag = "未知"
-            print("  %-44s %-16s %s" % (
-                os.path.basename(r["path"])[:44], tag, origins[:4]))
+    # 含 RESET 但不算 C 类的轨迹：归因于抓取/搬运失败，不是「放偏后重放」。
+    xr = [r for r in rows if r.get("class") == "X_reset"]
+    if xr:
+        print("\n含 RESET 但不成立为 C 类的轨迹（按 RESET 触发前状态归因）：")
+        for r in xr:
+            origins = sorted({o[2] for o in r["resets"]})
+            print("  %-44s %s" % (os.path.basename(r["path"])[:44], origins[:4]))
 
     # ------------------------------------------------------------ 剔除
     # 移到 _rejected/ 而不是删除：误判时可以捞回来，也留证据说明为什么剔。

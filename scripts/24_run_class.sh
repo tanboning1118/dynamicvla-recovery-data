@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 24_run_class.sh — 按 profile 跑某一类恢复数据（五类统一的入口）
+# 24_run_class.sh — 按 profile 跑某一类恢复数据（四类统一的入口）
 #
 # 用法:
 #   ./24_run_class.sh <profile文件> <输出子目录名> <起始seed> <episode数> [输出根目录]
@@ -8,7 +8,7 @@
 #   ./24_run_class.sh profiles/a_slip.env prod_a 4000001 50 /root/gpufree-data/work/out
 #
 # 为什么要有这个脚本:
-#   五类的参数差异不只是「开哪个注入」，还包括 episode 预算、--require_slip /
+#   四类的参数差异不只是「开哪个注入」，还包括 episode 预算、--require_slip /
 #   --keep_imperfect 的取舍、settle 上限。把这些散在命令行里必然漂移 ——
 #   实测就踩过两次：A 用了 open 模式（训练不可见）、B 沿用 30 s 预算（真抓空样本全超时）。
 #   所以参数一律以 profiles/*.env 为唯一真源，本脚本只负责把它翻译成命令行。

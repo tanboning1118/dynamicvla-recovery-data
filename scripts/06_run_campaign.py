@@ -21,11 +21,11 @@
 用法
 ----
     python scripts/06_run_campaign.py \
-        --profiles a_slip:352 b_miss:117 c_disturb:165 d_place_miss:83 e_control:49 \
+        --profiles a_slip:420 b_miss:150 c_place_miss:60 d_control:40 \
         --seed-base 9000 --bn 4 --chunk 20
 
     # 只跑不转换（校准产出率）
-    python scripts/06_run_campaign.py --profiles c_disturb:20 --dry-run --bn 1
+    python scripts/06_run_campaign.py --profiles c_place_miss:20 --dry-run --bn 1
 """
 from __future__ import annotations
 

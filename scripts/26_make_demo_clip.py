@@ -2,11 +2,11 @@
 """从任意一条恢复 episode 生成 README 演示视频（三路相机 + 状态机字幕）。
 
 与 v1 的差别：v1 只认「滑脱 -> 静止 -> 重抓」这一条时间线，本版从 sm_state
-推断恢复类型，同一份代码可出 A/B/C/D/E 五类视频。
+推断恢复类型，同一份代码可出 A/B/C/D 四类视频。
 
 用法:
     python scripts/26_make_demo_clip.py --h5 <episode.h5> --slug a_slip
-    python scripts/26_make_demo_clip.py --h5 <episode.h5> --slug d_place --start 60 --end 262
+    python scripts/26_make_demo_clip.py --h5 <episode.h5> --slug c_place --start 60 --end 262
 
 输出:
     assets/demo/recovery_<slug>.mp4   (H.264, 15 fps)
@@ -43,9 +43,8 @@ STATE = {
 LOOK = {
     "a_slip": dict(bgr=(60, 60, 235), tag="SLIP", head="A | slip out of the fingers, then re-grasp"),
     "b_miss": dict(bgr=(40, 190, 240), tag="MISS", head="B | closed on air, then re-grasp"),
-    "c_disturb": dict(bgr=(200, 120, 60), tag="PUSHED", head="C | object pushed away, then re-approach"),
-    "d_place": dict(bgr=(180, 90, 200), tag="MISSED PLACE", head="D | object missed the container, then reset"),
-    "e_control": dict(bgr=(120, 180, 90), tag="CLEAN", head="E | clean run (negative control)"),
+    "c_place": dict(bgr=(180, 90, 200), tag="MISSED PLACE", head="C | object missed the container, then reset"),
+    "d_control": dict(bgr=(120, 180, 90), tag="CLEAN", head="D | clean run (negative control)"),
 }
 
 
@@ -87,11 +86,9 @@ def detect_class(sm):
         prevs = [int(sm[i - 1]) for i in resets]
         spans = runs(sm == 1)
         if any(p >= 8 for p in prevs):
-            return "d_place", spans, "placed outside the container, retry from scratch"
-        if any(p <= 3 for p in prevs):
-            return "c_disturb", spans, "object moved before the grasp"
+            return "c_place", spans, "placed outside the container, retry from scratch"
         return "invalid", spans, "reset from grasp/transport failure, not a recovery class"
-    return "e_control", [], "no incident, plain pick-and-place"
+    return "d_control", [], "no incident, plain pick-and-place"
 
 
 def put(img, text, org, scale=0.52, color=(255, 255, 255), thick=1):
@@ -126,7 +123,7 @@ def main():
             "硬出片会在 README 里放一条语义错误的演示，故拒绝。\n"
             "确认要用请显式指定 --slug。")
     slug = args.slug or slug
-    look = LOOK.get(slug, LOOK["e_control"])
+    look = LOOK.get(slug, LOOK["d_control"])
     head = args.title or look["head"]
 
     cams = ["opst_cam_rgb", "wrist_cam_rgb", "side_cam_rgb"]

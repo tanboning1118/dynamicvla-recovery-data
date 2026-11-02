@@ -31,11 +31,10 @@ import os
 import sys
 
 # ---- 目标（docs/02_collection_scale.md §3.3）----
-TARGET = {"a_slip": 120, "b_miss": 75, "c_disturb": 60,
-          "d_place_miss": 30, "e_control": 15}
+TARGET = {"a_slip": 150, "b_miss": 100, "c_place_miss": 30, "d_control": 20}
 # A 类事故占比 ≥ 40%，B 类 ≥ 30%
-ACCIDENT_MIN = {"a_slip": 40.0, "b_miss": 30.0, "c_disturb": 10.0,
-                "d_place_miss": 5.0, "e_control": 0.0}
+ACCIDENT_MIN = {"a_slip": 40.0, "b_miss": 30.0, "c_place_miss": 5.0,
+                "d_control": 0.0}
 HOLDOUT_TARGET = 30
 RESIDENT_MAX_GB = 10.0
 
