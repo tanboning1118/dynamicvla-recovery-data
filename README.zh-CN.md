@@ -14,11 +14,32 @@ DOM 数据集是 20 万条成功轨迹，其中 `slipping + lost` 只占全部�
 
 ## 演示
 
-[![滑脱重抓轨迹](assets/demo/recovery_slip_retry.jpg)](assets/demo/recovery_slip_retry.mp4)
+管线跑出来的四段 episode。三路相机并排（opst / wrist / side），顶栏给帧号、时间、
+状态机阶段和 `|ee−obj|` 距离，异常区间用色框标出，底部一行说明这段在演什么。
+点缩略图播放。
 
-[观看该 episode](assets/demo/recovery_slip_retry.mp4)：25 Hz、183 帧，三路相机并排。
-第 66 帧物体滑脱，71 帧落定，82 帧重新接近并再次抓取，最终完成放置。画面上方叠加
-帧号、时间与状态机阶段，滑脱 / 落定 / 重试三段分别用红、橙、绿框标出。
+| 类 | 一段 episode | 画面里发生什么 |
+| --- | --- | --- |
+| **A**<br>滑脱后重抓 | [<img src="assets/demo/recovery_a_slip.jpg" width="300">](assets/demo/recovery_a_slip.mp4) | 夹爪全程保持闭合，接触摩擦降到 μ=0.02、质量 ×8，物体从两指之间滑出去落到台面；机械臂沉下来重新对准，再抓一次，走完放置。191 帧，滑脱在第 81 帧。 |
+| **B**<br>抓空后重试 | [<img src="assets/demo/recovery_b_miss.jpg" width="300">](assets/demo/recovery_b_miss.mp4) | 首抓横向偏 5 cm，夹爪闭合在空气上；抬升 10 帧后物体高度没变，判定空手，退回重新接近。物体从头到尾没离开过桌面——这是与 A 的关键区别。167 帧。 |
+| **D**<br>放偏后重放 | [<img src="assets/demo/recovery_d_place.jpg" width="300">](assets/demo/recovery_d_place.mp4) | 物体没落进碗里，连续 5 帧判定「未放置」，整条流程回 RESET 重来。片段截取了其中两轮失败到重试。 |
+| **E**<br>纯成功对照 | [<img src="assets/demo/recovery_e_control.jpg" width="300">](assets/demo/recovery_e_control.mp4) | 不注入任何扰动，干净的成功轨迹。它的作用是防止模型把「有异常 = 应该重试」学成无条件重试。 |
+
+### 五类的验证状态
+
+产出率只说明「存下来了几条」，不说明「恢复路径真的被走过了」——两者会脱节，
+校准时必须看状态码。
+
+| 类 | 机制 | 状态 |
+| --- | --- | --- |
+| A 滑脱 | 摩擦降到 0.02 + 配重 ×8，物体从指间滑出 | ✅ 已验证：sm 含 10/11/12 |
+| B 抓空 | 首抓偏 5 cm + 抬升检测 | ✅ 已验证：sm 含 12（episode 预算须 45 s，30 s 下真抓空样本全超时） |
+| C 推偏 | 侧向冲量 + `REC_DRIFT_TOL` 漂移闸门 | ⚠️ 注入与闸门已实现；重定位样本尚未稳定产出，见 `docs/01` 补正 |
+| D 放偏 | `is_object_placed` 判假 → RESET | ⚠️ 上面那段是**自然发生**的放偏；`REC_PLACE_OFFSET` 注入还在验证 |
+| E 对照 | 不注入 | ✅ 已验证：sm 不含 1/10/11/12/13 |
+
+四段视频都由 `过程文件/质检episode/make_demo_clip.py` 从原始 h5 直接渲染，
+叠加的帧号与状态码取自 `sm_state`，没有手工标注。
 
 ## 为什么需要恢复数据
 

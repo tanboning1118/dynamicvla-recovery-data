@@ -18,13 +18,36 @@ the simulator.
 
 ## Demo
 
-[![A slip-and-retry episode](assets/demo/recovery_slip_retry.jpg)](assets/demo/recovery_slip_retry.mp4)
+Four episodes straight out of the pipeline. Three cameras side by side
+(opst / wrist / side), with the frame counter, elapsed time, state-machine
+phase and `|ee−obj|` distance in the top bar. The incident window is boxed,
+and the caption underneath says what the clip is showing. Click a thumbnail
+to play.
 
-[Watch the episode](assets/demo/recovery_slip_retry.mp4) — 183 frames at 25 Hz,
-three cameras side by side. The object slips at frame 66, settles at 71, the
-arm re-approaches at 82, grasps again, and completes the placement. Frame
-counter and state-machine phase are overlaid; slipped/settling/retry segments
-are boxed in red, amber and green.
+| Class | One episode | What happens in the clip |
+| --- | --- | --- |
+| **A**<br>slip → re-grasp | [<img src="assets/demo/recovery_a_slip.jpg" width="300">](assets/demo/recovery_a_slip.mp4) | The gripper stays closed the whole time while contact friction drops to μ=0.02 and the mass is scaled ×8, so the object slides out from between the fingers and lands on the table. The arm sinks back down, re-aims and grasps again, then finishes the placement. 191 frames; the slip is at frame 81. |
+| **B**<br>miss → re-grasp | [<img src="assets/demo/recovery_b_miss.jpg" width="300">](assets/demo/recovery_b_miss.mp4) | The first grasp is offset 5 cm sideways, so the fingers close on air. Ten frames into the lift the object has not risen at all, the empty grasp is caught, and the arm backs off to try again. The object never leaves the table — that is what separates B from A. 167 frames. |
+| **D**<br>missed place → redo | [<img src="assets/demo/recovery_d_place.jpg" width="300">](assets/demo/recovery_d_place.mp4) | The object fails to land in the bowl. Five consecutive frames judge it unplaced, the whole sequence resets and runs again. The clip covers two failure-and-retry rounds. |
+| **E**<br>clean control | [<img src="assets/demo/recovery_e_control.jpg" width="300">](assets/demo/recovery_e_control.mp4) | No injection at all: a plain successful trajectory. Its job is to keep the model from learning "any anomaly means retry". |
+
+### Verification status per class
+
+Yield tells you how many episodes were kept. It does not tell you whether the
+recovery path was actually exercised — the two diverge, so calibration has to
+look at state codes.
+
+| Class | Mechanism | Status |
+| --- | --- | --- |
+| A slip | friction 0.02 + mass ×8, object slides out of the fingers | ✅ verified: `sm` contains 10/11/12 |
+| B miss | 5 cm first-grasp offset + lift check | ✅ verified: `sm` contains 12 (episode budget must be 45 s; at 30 s every genuine miss times out) |
+| C push | lateral impulse + `REC_DRIFT_TOL` stale-plan gate | ⚠️ injection and gate are in; re-localisation samples are not yet produced reliably — see the correction note in `docs/01` |
+| D missed place | `is_object_placed` false → RESET | ⚠️ the clip above happened **naturally**; the `REC_PLACE_OFFSET` injection is still being validated |
+| E control | no injection | ✅ verified: `sm` contains none of 1/10/11/12/13 |
+
+All four clips are rendered straight from the raw h5 by
+`过程文件/质检episode/make_demo_clip.py`. The frame counter and state codes come
+from `sm_state`; nothing in the overlay is hand-annotated.
 
 ## Why recovery data matters
 

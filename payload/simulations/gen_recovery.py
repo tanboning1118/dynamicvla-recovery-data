@@ -9,8 +9,16 @@ stays compatible with the DOM dataset format.
 
 Run with the Isaac Sim python, e.g.
     python simulations/gen_recovery.py --task place --robot franka -n 1 \
-        --save --enable_cameras --headless --disable_fabric \
+        --save --enable_cameras --headless \
         -o /path/to/out
+
+WARNING: never add ``--disable_fabric`` together with ``--enable_cameras``.
+IsaacLab only calls ``SimulationContext.render()``'s physics-to-render
+transform push (``_update_fabric``) when ``use_fabric=True``; at the same time
+AppLauncher keeps ``/physics/fabricUpdateTransformations`` on because cameras
+are enabled. Disabling fabric therefore leaves the renderer reading a USD stage
+that physics never writes back to: ``ee_pos`` and ``joints`` move normally while
+every camera frame stays frozen on the initial pose.
 """
 
 import argparse
@@ -56,7 +64,8 @@ parser.add_argument(
     default=os.path.join(_HERE, "configs", "sim_cfg.yaml"),
 )
 parser.add_argument("--debug", action="store_true", default=False)
-parser.add_argument("--disable_fabric", action="store_true", default=False)
+# NOTE: --disable_fabric comes from AppLauncher.add_app_launcher_args() above.
+# Do not re-register it here, and never pass it with --enable_cameras.
 parser.add_argument("--disable_sm", action="store_true", default=False)
 parser.add_argument("--path_tracing", action="store_true", default=False)
 parser.add_argument("--seed", type=int, default=None)

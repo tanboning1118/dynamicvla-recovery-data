@@ -159,7 +159,7 @@ REC_DISTURB_AT=${REC_DISTURB_AT:--1} REC_DISTURB_VEL=${REC_DISTURB_VEL:-0} \
 REC_DISTURB_AXIS=${REC_DISTURB_AXIS:-x} REC_DISTURB_RANGE=${REC_DISTURB_RANGE:-0.15} \
 $(printf %q "$PY") -u $(printf %q "$GEN") \
   --task ${GEN_TASK:-place} --robot ${GEN_ROBOT:-franka} \
-  -n $N --seed $SEED --save --enable_cameras --headless --disable_fabric \
+  -n $N --seed $SEED --save --enable_cameras --headless \
   $EXTRA --episode_length $EP_LEN -o $(printf %q "$RAW")"
 
 printf '\n%s命令%s\n' "$BLD" "$RST"

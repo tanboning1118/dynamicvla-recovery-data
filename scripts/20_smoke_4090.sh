@@ -71,7 +71,7 @@ cd "$CODE/simulations" || die "cd 失败"
 ARGS=(
     --task place --robot franka
     -n "$N"
-    --save --enable_cameras --headless --disable_fabric
+    --save --enable_cameras --headless
     --episode_length 30
     --scene_dir "$CODE/scenes"
     --object_dir "$CODE/objects"

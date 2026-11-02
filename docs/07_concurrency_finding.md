@@ -236,11 +236,11 @@ cd ~/dynamicvla-demo/dynamic-vla
 export REC_SLIP=0 REC_GRASP_CHECK=0 REC_MISS_OFFSET=0 REC_DISTURB_AT=-1
 PY=~/miniconda3/envs/dvla-isaac45-blackwell/bin/python
 $PY -u simulations/gen_recovery.py --task place --robot franka -n 3 --seed 600 \
-   --save --enable_cameras --headless --disable_fabric --keep_imperfect \
+   --save --enable_cameras --headless --keep_imperfect \
    --episode_length 30 -o /tmp/pa > /tmp/a.log 2>&1 &
 sleep 60
 $PY -u simulations/gen_recovery.py --task place --robot franka -n 3 --seed 700 \
-   --save --enable_cameras --headless --disable_fabric --keep_imperfect \
+   --save --enable_cameras --headless --keep_imperfect \
    --episode_length 30 -o /tmp/pb > /tmp/b.log 2>&1 &
 
 sleep 180

@@ -41,7 +41,7 @@
 ```bash
 export REC_SLIP=0 REC_GRASP_CHECK=0 REC_MISS_OFFSET=0 REC_DISTURB_AT=-1
 python simulations/gen_recovery.py --task place --robot franka \
-    -n 2 --seed 500 --save --enable_cameras --headless --disable_fabric \
+    -n 2 --seed 500 --save --enable_cameras --headless \
     --keep_imperfect --episode_length 30 -o /tmp/first_try
 ```
 
@@ -85,23 +85,37 @@ bash scripts/04_benchmark_single_card.sh --root ~/dynamicvla-demo --rounds 5
 
 ## 阶段 3 · 五类小批校准（约 1.5 h）
 
-**每类各跑 20 次尝试，只生成不转换**，目的是拿到 C/D 的真实产出率。
+**每类各跑 8–20 次尝试，只生成不转换**，目的是拿到 C/D 的真实产出率，并确认
+**恢复路径真的被走过了**（不是「保存成功」就算数）。
 
 ```bash
 for p in a_slip b_miss c_disturb d_place_miss e_control; do
-    bash scripts/05_generate.sh --profile profiles/$p.env \
-        --n 20 --seed 7000 --tag calib_$p
+    bash scripts/24_run_class.sh profiles/$p.env calib_$p 7000001 20
     bash scripts/08_qa_gates.sh ~/dvla-gen/calib_$p
 done
 ```
 
-| 类 | 期望产出率 | 若显著低于此值 | 调什么 |
+> 用 `24_run_class.sh` 而不是手拼命令行：五类的差异不只是「开哪个注入」，
+> 还有 episode 预算和 `--require_slip` / `--keep_imperfect` 的取舍。漏一项就会
+> 静默产废数据，且从保存率上看不出来（见下表 B 行）。
+
+**验收标准不是产出率，是「恢复状态出现过」**：
+
+| 类 | 必须出现的状态 | 判废的假阳性 |
+|---|---|---|
+| A 滑脱 | 10 / 11 / 12 | 只有 5→6 直接过（没滑脱） |
+| B 抓空 | 12（无 10/11） | 保存成功但状态里没有 12（偏移注入了却没抓住空） |
+| C 推偏 | 1（RESET） | 保存成功但没有 1（物体被推走，机械臂跟着走完） |
+| D 放偏 | 1（RESET） | 保存成功但没有 1（放置其实成功了） |
+| E 对照 | 无 1/10/11/12/13 | 出现任一 → 该条应被 `POST_FILTER` 剔除 |
+
+| 类 | 实测产出率（2026-11-02，4090） | 若显著低于此值 | 调什么 |
 |---|---:|---|---|
-| A 滑脱 | ≥ 30% | 检查 `REC_SLIP_MODE` 是否真为 `friction`（G2 闸） | `SETTLE_MAX_TIME` 提到 6.0 |
-| B 抓空 | ≥ 50% | 检查是否漏了 `--keep_imperfect` | `MISS_OFFSET` 在 0.04–0.05 微调 |
-| C 推偏 | 待测（估 40%） | 物体被推出可达范围 | `REC_DISTURB_VEL` 降到 0.25 |
-| D 放偏 | 待测（估 40%） | `is_object_placed` 一直为真，不触发重试 | 改容器类别（`bowl` 比 `placemat` 更容易放偏） |
-| E 对照 | ≥ 30% | — | 无需调 |
+| A 滑脱 | 1/6–2/6（小样本；历史 37.5%） | 检查 `REC_SLIP_MODE` 是否真为 `friction` | `SETTLE_MAX_TIME` 提到 6.0 |
+| B 抓空 | 保存率 60%，**其中真抓空约 1/5** | 真抓空样本全超时 → 预算不够 | `GEN_EPISODE_LENGTH` 30 → 45 |
+| C 推偏 | 0%（原配方）/ 见 docs/01 补正 | 一条 RESET 都没有 | 加 `REC_DRIFT_TOL`，`DISTURB_VEL` 降到 0.15 |
+| D 放偏 | 0%（原配方）/ 见 docs/01 补正 | `is_object_placed` 一直为真 | 加 `REC_PLACE_OFFSET=0.06` |
+| E 对照 | 3/4 | — | 无需调 |
 
 **闸门必须全绿**：
 

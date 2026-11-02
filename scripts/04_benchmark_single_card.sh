@@ -102,7 +102,7 @@ run_one() { # tag seed n outdir
         export REC_SLIP=0 REC_GRASP_CHECK=0 REC_MISS_OFFSET=0 REC_DISTURB_AT=-1
         export REC_SLIP_MODE=friction REC_SETTLE_MAX_TIME=3.0
         "$PY" -u "$GEN" --task place --robot franka -n "$n" --seed "$seed" \
-            --save --enable_cameras --headless --disable_fabric \
+            --save --enable_cameras --headless \
             --keep_imperfect --episode_length 30 -o "$outdir/raw"
     ) > "$OUT/${tag}.log" 2>&1
     return $?

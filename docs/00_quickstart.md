@@ -192,7 +192,7 @@ export REC_SLIP=0 REC_GRASP_CHECK=0 REC_MISS_OFFSET=0 REC_DISTURB_AT=-1
 
 python simulations/gen_recovery.py \
     --task place --robot franka \
-    -n 2 --seed 500 --save --enable_cameras --headless --disable_fabric \
+    -n 2 --seed 500 --save --enable_cameras --headless \
     --keep_imperfect --episode_length 30 \
     -o /tmp/first_try
 ```

@@ -28,6 +28,6 @@ OUTDIR=$OUTROOT/$W
 mkdir -p "$OUTDIR"
 cd "$(dirname "$0")/../code/simulations" 2>/dev/null || cd "${SIM_DIR:?请设置 SIM_DIR 指向 simulations 目录}"
 
-exec stdbuf -oL -eL "$PY" gen_recovery.py --headless --enable_cameras --disable_fabric \
+exec stdbuf -oL -eL "$PY" gen_recovery.py --headless --enable_cameras \
   -n "$N" --seed "$SEED" --save \
   -o "$OUTDIR"

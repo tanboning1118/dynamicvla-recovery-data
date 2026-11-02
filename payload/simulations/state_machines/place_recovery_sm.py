@@ -47,6 +47,8 @@ file has to be touched (the evaluation path stays bit-identical):
     REC_DISTURB_VEL      float shove speed, m/s                 (default 0)
     REC_DISTURB_AXIS     x|y   shove direction in the table plane (default x)
     REC_DISTURB_RANGE    float fire only when the arm is this close, m (0.15)
+    REC_DRIFT_TOL        float object drift that invalidates the plan, m (0 = off)
+    REC_PLACE_OFFSET     float lateral offset of the drop point, m     (0 = off)
     REC_DEBUG           1/0   dump per-step trace to /tmp/rec_trace.jsonl
 
 The two jitter knobs implement target (1) "learn from a less-than-ideal
@@ -126,6 +128,22 @@ DISTURB_VEL = _envf("REC_DISTURB_VEL", 0.0)
 DISTURB_AXIS = os.environ.get("REC_DISTURB_AXIS", "x").strip().lower()
 # Only fires once the arm is this close (m) with the gripper still open.
 DISTURB_RANGE = _envf("REC_DISTURB_RANGE", 0.15)
+
+# ---- stale-plan gate (class C) --------------------------------------------
+# The arm recomputes grasp_pos from the LIVE object pose every frame, so a shove
+# alone never breaks anything: the arm simply follows the object and the episode
+# looks clean. Measured 2026-11-02: 5/5 saved C episodes contained no RESET.
+# This gate turns the shove into an actual failure: once the object has drifted
+# more than DRIFT_TOL from where it stood when the arm committed to the approach,
+# the plan is stale -> RESET and re-plan. 0 disables the gate.
+DRIFT_TOL = _envf("REC_DRIFT_TOL", 0.0)
+
+# ---- placement offset (class D) -------------------------------------------
+# The official placement is accurate to the millimetre, so is_object_placed()
+# is always true and the RESET branch never fires (measured 2026-11-02: 2/2
+# saved D episodes had no RESET). Offsetting the drop point laterally by
+# PLACE_OFFSET is what actually manufactures the missed placement. 0 disables.
+PLACE_OFFSET = _envf("REC_PLACE_OFFSET", 0.0)
 
 TRACE_PATH = "/tmp/rec_trace.jsonl"
 # Rolling event log, read by the generator right after simulate() returns.
@@ -375,6 +393,8 @@ class PlaceRecoveryStateMachine:
         self._miss_pending = MISS_OFFSET > 0.0
         self._grasp_misses = 0
         self._disturbed = False
+        self._place_off = torch.zeros(3, device=self.device)
+        self._drift_anchor = None
         self._resample_grasp_jitter()
 
     # ------------------------------------------------------------------ helpers
@@ -398,6 +418,17 @@ class PlaceRecoveryStateMachine:
         self._miss_pending = MISS_OFFSET > 0.0
         self._grasp_misses = 0
         self._disturbed = False
+        self._drift_anchor = None
+        if PLACE_OFFSET > 0.0:
+            # 用全局 RNG 而不是 _jitter_rng：D 类不触发 jitter，那个 generator
+            # 不会被 _resample_grasp_jitter 重新播种，会让每条 episode 抽到同方向
+            ang = float(torch.rand(1)) * 2.0 * math.pi
+            self._place_off = torch.tensor(
+                [PLACE_OFFSET * math.cos(ang), PLACE_OFFSET * math.sin(ang), 0.0],
+                device=self.device,
+            )
+        else:
+            self._place_off = torch.zeros(3, device=self.device)
         self._resample_grasp_jitter()
 
     # ------------------------------------------------------------- jitter
@@ -520,6 +551,11 @@ class PlaceRecoveryStateMachine:
         place_pos = ctn_pos + torch.tensor(
             [0.0, 0.0, 0.10], device=self.device, dtype=ctn_pos.dtype
         )
+        if PLACE_OFFSET > 0.0:
+            # D 类：把落点横向挪开，让 is_object_placed() 判假
+            place_pos = place_pos + self._place_off.to(
+                device=place_pos.device, dtype=place_pos.dtype
+            )
         place_quat = self.final_eef_pose[0, 3:7]
 
         above_grasp = grasp_pos + self._z_off
@@ -530,6 +566,12 @@ class PlaceRecoveryStateMachine:
         dist_ee_obj = float(torch.norm(ee_pos - obj_pos))
         obj_z = float(obj_pos[2])
         obj_speed = float(torch.norm(obj_vel))
+        # C 类：物体相对「接管时刻」的位置漂移。超过 DRIFT_TOL 说明计划过期。
+        plan_stale = (
+            DRIFT_TOL > 0.0
+            and self._drift_anchor is not None
+            and float(torch.norm(obj_pos - self._drift_anchor)) > DRIFT_TOL
+        )
 
         # One-shot external shove (evaluation group 3-3). Fired the first time
         # the arm is within DISTURB_RANGE of the object with the gripper still
@@ -547,6 +589,8 @@ class PlaceRecoveryStateMachine:
             vx = DISTURB_VEL if DISTURB_AXIS != "y" else 0.0
             vy = DISTURB_VEL if DISTURB_AXIS == "y" else 0.0
             ok = push_object(vx, vy)
+            # 记下推之前的站位：此后物体漂移多少，就是「计划失效」多少
+            self._drift_anchor = obj_pos.clone()
             if DEBUG:
                 print(
                     "[recovery-sm] disturbance at step %d: %.2f m/s along %s,"
@@ -600,6 +644,10 @@ class PlaceRecoveryStateMachine:
             self._set(above_grasp, grasp_quat, GRIPPER_OPEN)
             if dist_grasp >= self.max_reach_dist:
                 next_state = PlaceRecSmState.RESET
+            elif plan_stale:
+                # 物体已经被推离接管时的站位：当前这条接近轨迹是过期计划
+                self._drift_anchor = None
+                next_state = PlaceRecSmState.RESET
             elif (
                 self._offset_below_threshold(
                     torch.abs(ee_pos - grasp_pos), self.thres, obj_vel
@@ -612,14 +660,19 @@ class PlaceRecoveryStateMachine:
         # ------------------------------------------------ APPROACH_OBJECT
         elif st == PlaceRecSmState.APPROACH_OBJECT:
             self.grip = GRIPPER_OPEN
-            if not self.use_cache_grasp_quat:
-                self._set(grasp_pos, grasp_quat, GRIPPER_OPEN)
-                self.use_cache_grasp_quat = True
-            else:
-                self._set(grasp_pos, self.des_quat, GRIPPER_OPEN)
-            if self.wait >= PlaceSmWaitTime.APPROACH_OBJECT:
-                next_state = PlaceRecSmState.GRASP_OBJECT
+            if plan_stale:
+                self._drift_anchor = None
                 self.use_cache_grasp_quat = False
+                next_state = PlaceRecSmState.RESET
+            else:
+                if not self.use_cache_grasp_quat:
+                    self._set(grasp_pos, grasp_quat, GRIPPER_OPEN)
+                    self.use_cache_grasp_quat = True
+                else:
+                    self._set(grasp_pos, self.des_quat, GRIPPER_OPEN)
+                if self.wait >= PlaceSmWaitTime.APPROACH_OBJECT:
+                    next_state = PlaceRecSmState.GRASP_OBJECT
+                    self.use_cache_grasp_quat = False
 
         # --------------------------------------------------- GRASP_OBJECT
         elif st == PlaceRecSmState.GRASP_OBJECT:

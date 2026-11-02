@@ -163,8 +163,7 @@ def build_cmd(prof: dict, seed: int, n: int, out_raw: Path,
         "--task", prof.get("GEN_TASK", "place"),
         "--robot", prof.get("GEN_ROBOT", "franka"),
         "-n", str(n), "--seed", str(seed),
-        "--save", "--enable_cameras", "--headless", "--disable_fabric",
-        *extra,
+        "--save", "--enable_cameras", "--headless", *extra,
         "--episode_length", prof.get("GEN_EPISODE_LENGTH", "30"),
         "-o", str(out_raw),
     ]
@@ -198,6 +197,19 @@ def post_filter(base: Path, prof: dict) -> tuple[int, int]:
                 with h5py.File(h5, "r") as f:
                     sm = f["sm_state"][:].astype(int)
                 keep = bool((sm == 1).any())
+            except Exception:
+                keep = False
+
+        elif mode == "has_retry":
+            # B 类：必须出现 RECOVER_APPROACH（状态 12）。
+            # 生成器用了 --keep_imperfect（抓空不含 slip，不能用 --require_slip），
+            # 副作用是「注入偏移但恰好还是抓到了」的干净轨迹也会被保存。
+            # 不过滤的话 B 目录里会混进大量 ordinary success，事故标签密度虚高。
+            try:
+                import h5py
+                with h5py.File(h5, "r") as f:
+                    sm = f["sm_state"][:].astype(int)
+                keep = bool((sm == 12).any()) and bool((sm == 9).any())
             except Exception:
                 keep = False
 
