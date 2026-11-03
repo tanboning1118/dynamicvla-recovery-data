@@ -15,6 +15,13 @@ density reaches **49.35%**, a 37× increase over DOM.
 The pipeline runs on a single consumer GPU. No model weights are needed; only
 the simulator.
 
+> **Status (2026-11-03)**: the A/B recipes were finalised after two ~40-minute
+> calibration runs (episode budget 30 s → 45 s, A-class payload ×8 → ×4) and
+> have entered mass production — A-class keep rate 26% → 35.8%, B-class 40%,
+> class purity 100% throughout. Calibration data, per-round production numbers
+> and the engineering traps are in
+> [`docs/10_calibration_first_production.md`](docs/10_calibration_first_production.md).
+
 ## Demo
 
 Four episodes straight out of the pipeline. Three cameras side by side
@@ -73,7 +80,7 @@ episode on a 4090, 2026-11-02.
 
 | Class | Mechanism | Status | Effective rate |
 | --- | --- | --- | --- |
-| A slip | friction 0.02 + mass ×8, object slides out of the fingers | ✅ stable; `--require_slip` enforces it, every episode contains 10/11/12 | yield ~26%, **class purity 100%** |
+| A slip | friction 0.02 + payload, object slides out of the fingers | ✅ stable; `--require_slip` enforces it, every episode contains 10/11/12 | ~26% at the 30 s baseline; **35.8% with the production recipe (45 s + ×4)**, class purity 100% |
 | B miss | 5 cm first-grasp offset + lift check | ✅ stable but **must be filtered**: `--keep_imperfect` saves clean trajectories too | keep rate ~46%, genuine misses only **3/8 (37.5%)** |
 | C missed place | `is_object_placed` false → RESET | 🟡 **usable in degraded mode**. The 6 cm `REC_PLACE_OFFSET` is not aggressive enough; real samples come from natural misses | ~1/8, by filtering |
 | D control | no injection | ✅ stable; `sm` contains none of 1/10/11/12/13 | ~35–40% |
@@ -126,6 +133,36 @@ All four clips are rendered straight from the raw h5 by
 `scripts/26_make_demo_clip.py`. The frame counter and state codes come
 from `sm_state`; nothing in the overlay is hand-annotated.
 
+### Calibration and first production run (2026-11-03)
+
+Two parameters had been set by rule of thumb. Calibrating each cost about
+40 minutes (under ¥2 of instance time in total), and both paid off:
+
+- **Episode budget 30 s → 45 s**: A-class n=20 comparison, keep rate 35% vs
+  the 26% baseline, purity 100% in both arms. Under a 30 s budget the full
+  slip → settle → re-grasp → place chain frequently runs out of clock.
+- **A-class payload ×8 → ×4**: single-variable sweep (n=8 per arm), ×2/×3 at
+  25% each, ×4 at 50%, ×6/×8 at 38%. ×4 reaches the highest keep rate in this
+  sample with the lightest payload — the lighter the payload, the closer the
+  recovery-segment dynamics stay to the real object. (Eight attempts per arm
+  is a small sample; it supports the ordering "×4 beats ×2/×3 and matches
+  larger payloads" and nothing stronger.)
+
+Measured keep rates under the production recipes (A: 45 s + ×4; B: 45 s):
+**A 35.8%** (43 kept of 120 attempts), **B 40.0%** (60 of 150). Against the
+26% baseline used in the docs/02 quota estimate, class A needs about 27%
+fewer attempts for the same target. Round-to-round keep rates fluctuate
+between 30% and 43% under identical recipes — with these sample sizes that is
+more plausibly sampling noise than a trend.
+
+Mass production is driven by
+[`scripts/29_quota_runner.sh`](scripts/29_quota_runner.sh): it keeps starting
+new rounds until the target episode count is met, leaves no idle gap between
+rounds, and resumes from a persisted seed counter. The full calibration data,
+per-round log numbers and three engineering traps (the `--disable_fabric`
+crash, the `SIM_DIR` fast-exit, background-operator precedence) are in
+[`docs/10_calibration_first_production.md`](docs/10_calibration_first_production.md).
+
 ## Why recovery data matters
 
 The evaluation half of DynamicVLA makes the gap visible. Across 1,800 closed-loop
@@ -149,13 +186,16 @@ arbitrarily.
 
 | Class | Scenario | Injection | Target failure | Episodes |
 | --- | --- | --- | --- | ---: |
-| **A** | Slip, then re-grasp | friction μ = 0.02, payload ×8, gripper stays closed | slip after grasp | 150 |
-| **B** | Grasp on air, then retry | 5 cm lateral offset at first grasp, lift check fails, grasp again | no grasp | 100 |
-| **C** | Placement misses, second attempt | `is_object_placed` false for 5 frames → RESET | bad placement | 30 |
-| **D** | Clean control | none | negative control | 20 |
+| **A** | Slip, then re-grasp | friction μ = 0.02, payload ×4 (production value after calibration; baseline ×8), gripper stays closed | slip after grasp | 165 |
+| **B** | Grasp on air, then retry | 5 cm lateral offset at first grasp, lift check fails, grasp again | no grasp | 110 |
+| **C** | Placement misses, second attempt | `is_object_placed` false for 5 frames → RESET | bad placement | 33 |
+| **D** | Clean control | none | negative control | 22 |
 
-Physics rationale and per-class yields are in
-[`docs/01_scenario_design.md`](docs/01_scenario_design.md).
+Episode targets are production quotas; each class reserves ~10% as holdout
+(for evaluation only, never trained on). Physics rationale and per-class
+yields are in [`docs/01_scenario_design.md`](docs/01_scenario_design.md);
+the calibration runs are in
+[`docs/10_calibration_first_production.md`](docs/10_calibration_first_production.md).
 
 ## Scope
 
@@ -195,7 +235,7 @@ assumes you have your own fork.
 | Robot | Franka Panda |
 | Control rate | 25 Hz (`dt = 0.04 s`) |
 | Cameras | `opst` / `wrist` / `side`, 480×360, RGB + segmentation |
-| Episode budget | 30 s for recovery generation, 12 s for the official place task |
+| Episode budget | 45 s for recovery generation (A/B production recipe, adopted 2026-11-03), 12 s for the official place task |
 
 ## Measured throughput
 
@@ -214,8 +254,11 @@ deadlocks inside Omniverse Kit initialisation (it allocates 821 MiB and never
 proceeds); the 4090 does not, which is why parallel production is only enabled
 for 24 GB cards. Deployment scripts:
 [`21_parallel_worker.sh`](scripts/21_parallel_worker.sh) and
-[`22_supervisor_4090.sh`](scripts/22_supervisor_4090.sh). Yield is 30–40% of
-attempts at a 30 s budget; a saved episode is 65–97 MB of h5.
+[`22_supervisor_4090.sh`](scripts/22_supervisor_4090.sh), plus
+[`29_quota_runner.sh`](scripts/29_quota_runner.sh) on top, which keeps rounds
+running until a target episode count is met. Yield is 26–40% of attempts at
+the 30 s budget; under the 45 s production recipe, A 35.8% and B 40.0%
+(a saved episode is 65–97 MB of h5).
 
 Full measurements, including the 8 GB deadlock experiments and the correction
 that the 4090 does not inherit that behaviour, are in
@@ -267,6 +310,12 @@ PROFILE_C=$PWD/profiles/b_miss.env \
 EP_PER_ROUND=50 \
 setsid nohup bash scripts/22_supervisor_4090.sh > /dev/null 2>&1 < /dev/null &
 touch /root/gpufree-data/work/STOP      # graceful stop after the current round
+
+# Or: quota-driven — keep starting rounds until the target episode count is met
+echo 9600001 > /path/out/_seed_a
+setsid nohup bash scripts/29_quota_runner.sh \
+    profiles/a_slip_prod.env /path/out/prod3_a 158 /path/out/_seed_a \
+    > /tmp/runner_a.log 2>&1 < /dev/null &
 ```
 
 Before a full run, sweep the two knobs that decide how many attempts are
@@ -340,10 +389,10 @@ All four profiles assign every parameter with explicit `export`, and write a
 
 ```
 payload/     generator, recovery state machine, annotator, quality gates
-profiles/    four recipe files, every parameter explicit
-scripts/     00→10 production chain, 20→24 parallel production, 25→28 verification, demo, calibration & deploy
+profiles/    four scenario recipes + a_slip_prod production recipe, every parameter explicit
+scripts/     00→10 production chain, 20→24 parallel production, 25→28 verification, demo, calibration & deploy, 29 quota runner
 patches/     grasp-rise prerequisite patch (see docs/05)
-docs/        scenario design, scale, benchmarks, label contract, SOP, traps
+docs/        scenario design, scale, benchmarks, label contract, SOP, traps, calibration & first production
 ```
 
 ## License

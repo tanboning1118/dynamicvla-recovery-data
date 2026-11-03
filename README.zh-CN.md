@@ -12,6 +12,11 @@ DOM 数据集是 20 万条成功轨迹，其中 `slipping + lost` 只占全部�
 
 整条管线在单张消费级显卡上就能跑，不需要模型权重，只需要仿真器。
 
+> **当前状态（2026-11-03）**：A/B 两类配方经两项各约 40 分钟的标定后定稿
+> （episode 预算 30 s→45 s、A 类配重 ×8→×4），已进入量产——A 类保存率
+> 26%→35.8%，B 类 40%，类别纯度均 100%。标定数据、量产各轮实测与
+> 工程坑见 [`docs/10_calibration_first_production.md`](docs/10_calibration_first_production.md)。
+
 ## 演示
 
 四段 episode 直接从管线产出，三路相机并排（opst / wrist / side）。顶栏给帧号、时间、
@@ -55,7 +60,7 @@ DOM 数据集是 20 万条成功轨迹，其中 `slipping + lost` 只占全部�
 
 | 类 | 机制 | 状态 | 实测有效率 |
 | --- | --- | --- | --- |
-| A 滑脱 | 摩擦降到 0.02 + 配重 ×8，物体从指间滑出 | ✅ 稳定。`--require_slip` 强约束，每条都含 10/11/12 | 产出率约 26%，**类别纯度 100%** |
+| A 滑脱 | 摩擦降到 0.02 + 配重，物体从指间滑出 | ✅ 稳定。`--require_slip` 强约束，每条都含 10/11/12 | 30 s 基线约 26%；**量产配方（45 s + ×4）35.8%**，类别纯度 100% |
 | B 抓空 | 首抓偏 5 cm + 抬升检测 | ✅ 稳定，但**必须过滤**：`--keep_imperfect` 会把干净轨迹一起存下来 | 保存率约 46%，其中真抓空仅 **3/8（37.5%）** |
 | C 放偏 | `is_object_placed` 判假 → RESET | 🟡 **降级可用**。`REC_PLACE_OFFSET=0.06` 偏不够狠，真样本来自自然放偏 | 约 1/8（靠筛选） |
 | D 对照 | 不注入 | ✅ 稳定，sm 不含 1/10/11/12/13 | 约 35–40% |
@@ -99,6 +104,28 @@ python scripts/25_verify_episode.py out/prod_b2 --expect B_miss --prune
 四段视频由 `scripts/26_make_demo_clip.py` 从原始 h5 直接渲染，
 叠加的帧号与状态码取自 `sm_state`，没有手工标注。
 
+### 标定与首产（2026-11-03）
+
+正式放量前各花约 40 分钟（实例费合计不到 ¥2）标定了两个凭经验定的参数，
+两项都有效：
+
+- **episode 预算 30 s → 45 s**：A 类 n=20 对照，保存率 35% vs 基线 26%，
+  纯度均 100%。30 s 预算下「滑脱 + 静止 + 重抓 + 放置」经常踩线超时。
+- **A 类配重 ×8 → ×4**：单变量扫描（每档 n=8）×2/×3 各 25%、×4 50%、
+  ×6/×8 各 38%。×4 以最轻的配重达到本样本最高保存率——配重越轻，
+  恢复段的物体动力学越接近真实分布。（每档 8 次是小样本，只支持
+  「×4 优于 ×2/×3、与更大配重相当」的排序结论。）
+
+量产配方（A：45 s + ×4；B：45 s）下的实测保存率：**A 35.8%**（120 次
+尝试存 43 条）、**B 40.0%**（150 次存 60 条）。相比 docs/02 推算所用的
+26% 基线，A 类同目标所需的 attempt 数约少 27%。轮与轮之间保存率有
+30%–43% 的波动，同配方下更可能是抽样噪声而非趋势。
+
+量产由 [`scripts/29_quota_runner.sh`](scripts/29_quota_runner.sh) 配额自驱：
+按目标条数自动续轮、轮间零空转、种子自增可接续。全套标定数据、各轮
+日志数字与三个工程坑（`--disable_fabric` 崩溃、`SIM_DIR` 秒退、后台化
+抢跑）见 [`docs/10_calibration_first_production.md`](docs/10_calibration_first_production.md)。
+
 ## 为什么需要恢复数据
 
 DynamicVLA 的评测部分把这个缺口暴露得很清楚。1,800 条闭环 DOM 试验里，失败形态集中：
@@ -118,12 +145,14 @@ DOM 里没有一条样本告诉模型「东西脱手了，回去捡起来」。�
 
 | 类 | 场景 | 注入方式 | 对应失败 | 目标条数 |
 | --- | --- | --- | --- | ---: |
-| **A** | 滑脱后重抓 | 摩擦 μ = 0.02、配重 ×8，夹爪保持闭合 | 抓住后滑脱 | 150 |
-| **B** | 抓空后重试 | 首抓横向偏移 5 cm，抬升检测失败，重新抓取 | 抓取失败 | 100 |
-| **C** | 放偏后二次放置 | `is_object_placed` 连续 5 帧为假 → RESET | 放置失败 | 30 |
-| **D** | 纯成功对照 | 不注入 | 负对照 | 20 |
+| **A** | 滑脱后重抓 | 摩擦 μ = 0.02、配重 ×4（标定后量产值，基线 ×8），夹爪保持闭合 | 抓住后滑脱 | 165 |
+| **B** | 抓空后重试 | 首抓横向偏移 5 cm，抬升检测失败，重新抓取 | 抓取失败 | 110 |
+| **C** | 放偏后二次放置 | `is_object_placed` 连续 5 帧为假 → RESET | 放置失败 | 33 |
+| **D** | 纯成功对照 | 不注入 | 负对照 | 22 |
 
-物理机制与各类实际产出率见 [`docs/01_scenario_design.md`](docs/01_scenario_design.md)。
+目标条数为生产配额，每类含约 10% holdout（评测用，不进训练）。
+物理机制与各类实际产出率见 [`docs/01_scenario_design.md`](docs/01_scenario_design.md)，
+标定过程见 [`docs/10_calibration_first_production.md`](docs/10_calibration_first_production.md)。
 
 ## 范围
 
@@ -159,7 +188,7 @@ DOM 里没有一条样本告诉模型「东西脱手了，回去捡起来」。�
 | 机器人 | Franka Panda |
 | 控制频率 | 25 Hz（`dt = 0.04 s`） |
 | 相机 | `opst` / `wrist` / `side`，480×360，RGB + 分割 |
-| Episode 预算 | 恢复数据生成 30 s，官方 place 任务 12 s |
+| Episode 预算 | 恢复数据生成 45 s（A/B 量产配方，2026-11-03 标定采纳），官方 place 任务 12 s |
 
 ## 实测吞吐
 
@@ -175,8 +204,10 @@ DOM 里没有一条样本告诉模型「东西脱手了，回去捡起来」。�
 24 GB 卡的上限是两个进程。8 GB 卡上第二个实例会在 Omniverse Kit 初始化阶段死锁
 （只申请 821 MiB 后停住），4090 上不会——所以并行生产只对 24 GB 卡开放。
 部署脚本：[`21_parallel_worker.sh`](scripts/21_parallel_worker.sh)、
-[`22_supervisor_4090.sh`](scripts/22_supervisor_4090.sh)。
-30 s 预算下产出率为尝试数的 30–40%，单条 h5 体积 65–97 MB。
+[`22_supervisor_4090.sh`](scripts/22_supervisor_4090.sh)；
+[`29_quota_runner.sh`](scripts/29_quota_runner.sh) 在此之上按目标条数自驱续轮。
+30 s 预算下产出率为尝试数的 26–40%；45 s 量产配方下 A 类 35.8%、B 类 40.0%
+（单条 h5 体积 65–97 MB）。
 
 完整测量（含 8 GB 死锁实验，以及「4090 不继承该行为」这一修正）见
 [`docs/07_concurrency_finding.md`](docs/07_concurrency_finding.md) §12 与
@@ -219,6 +250,12 @@ python scripts/10_report.py --base ~/dvla-gen
 ```bash
 setsid nohup bash scripts/22_supervisor_4090.sh > /dev/null 2>&1 < /dev/null &
 touch /root/gpufree-data/work/STOP      # 当前轮跑完后优雅退出
+
+# 或：配额自驱——按目标条数自动续轮，达标即停
+echo 9600001 > /path/out/_seed_a
+setsid nohup bash scripts/29_quota_runner.sh \
+    profiles/a_slip_prod.env /path/out/prod3_a 158 /path/out/_seed_a \
+    > /tmp/runner_a.log 2>&1 < /dev/null &
 ```
 
 ## 数据契约
@@ -281,10 +318,10 @@ A 类 9 条实测：G2 9/9 通过，G3 9/9 通过，G4 `lost = 33.27%`，
 
 ```
 payload/     生成器、恢复状态机、标注器、质量闸门
-profiles/    四类配方，参数全部显式
-scripts/     00→10 生产链，20→24 并行生产，25→26 验收与演示
+profiles/    四类场景配方 + a_slip_prod 量产配方（参数全部显式）
+scripts/     00→10 生产链，20→24 并行生产，25→26 验收与演示，27 标定，29 配额自驱
 patches/     抓取抬升先决补丁（见 docs/05）
-docs/        场景设计、采集规模、基准测试、标签契约、SOP、踩坑
+docs/        场景设计、采集规模、基准测试、标签契约、SOP、踩坑、标定与首产
 ```
 
 ## 许可

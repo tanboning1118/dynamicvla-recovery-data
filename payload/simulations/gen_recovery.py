@@ -130,7 +130,7 @@ def build_sim_cfg():
         {
             "debug": args.debug,
             "device": args.device,
-            "disable_fabric": args.disable_fabric,
+            "disable_fabric": getattr(args, "disable_fabric", False),
             "disable_sm": args.disable_sm,
             "enable_cameras": args.enable_cameras,
             "num_envs": args.num_envs,
